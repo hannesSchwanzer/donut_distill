@@ -3,8 +3,8 @@ Finetuning the Donut model on the FUNSD dataset
 
 ## ToDos
 1. Preprocess data
-- [ ] Link items from json file
-- [ ] Convert to Donut format
+- [x] Link items from json file
+- [x] Convert to Donut format
 2. Create Dataset
 - [ ] Use Donut dataset
 3. Train Model
