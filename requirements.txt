@@ -1,0 +1,3 @@
+donut-python
+numpy
+wandb

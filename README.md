@@ -13,6 +13,7 @@ unzip dataset.zip
 rm dataset.zip
 ```
 3. Install python
+4. Install [pytorch](https://pytorch.org/get-started/locally/) (you might need to install cuda first, if you want to use gpu)
 4. Install requirements
 ```
 pip install -r requirements.txt
@@ -36,7 +37,7 @@ python train.py
 - [x] Use Donut dataset
 3. Train Model
 - [x] Setup and load pre-trained Donut model
-- [ ] Create trainingsloop
-- [ ] Create Loss function
-- [ ] Calculate stats (loss, acc)
-- [ ] Log on wandb
+- [x] Create trainingsloop
+- [x] Calculate stats (loss, acc)
+- [x] Log on wandb
+- [ ] Run training
