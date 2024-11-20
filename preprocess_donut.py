@@ -1,6 +1,8 @@
 from PIL import Image
 import json
 from os import listdir, path
+from pathlib import Path
+import shutil
 
 
 def preprocess_annotations(annotation_path):
@@ -55,8 +57,10 @@ def preprocess_annotations(annotation_path):
     return {"qa_pairs": qa_pairs}
 
 
-def preprocess_directory(directory_path):
-    metadata_file = open(path.join(directory_path, "metadata.jsonl"), "w")
+def preprocess_directory(directory_path, output_path):
+    # Create new directories and metadata file
+    Path(output_path).mkdir(parents=True, exist_ok=True)
+    metadata_file = open(path.join(output_path, "metadata.jsonl"), "w")
 
     image_directory = path.join(directory_path, "images")
     annotation_directory = path.join(directory_path, "annotations")
@@ -71,12 +75,17 @@ def preprocess_directory(directory_path):
         annotation_path = path.join(annotation_directory, f"{id}.json")
 
         preprocessed_annotation = preprocess_annotations(annotation_path)
+        gt = {
+            "gt_parse": preprocessed_annotation
+        }
         file_metadata = {
-            "file_name": image_path,
-            "ground_truth": preprocessed_annotation,
+            "file_name": f"{id}.png",
+            "ground_truth": json.dumps(gt),
         }
         metadata_file.write(json.dumps(file_metadata))
         metadata_file.write("\n")
+
+        shutil.copy(image_path, output_path)
 
     metadata_file.close()
 
@@ -84,5 +93,5 @@ def preprocess_directory(directory_path):
 if __name__ == "__main__":
     test_directory = "dataset/testing_data"
     train_directory = "dataset/training_data"
-    preprocess_directory(test_directory)
-    preprocess_directory(train_directory)
+    preprocess_directory(test_directory, "preprocessed_dataset/testing_data")
+    preprocess_directory(train_directory, "preprocessed_dataset/training_data")
