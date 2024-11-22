@@ -17,6 +17,8 @@ from transformers import (
 )
 from donut_dataset import DonutDataset, added_tokens
 
+TOKENIZERS_PARALLELISM = False
+
 
 def prepare_dataloader(config, processor, model):
     training_data = DonutDataset(
@@ -79,6 +81,7 @@ def train():
     model = VisionEncoderDecoderModel.from_pretrained(
         "naver-clova-ix/donut-base", config=donut_config
     )
+    model = model.to(device)
 
     processor.image_processor.size = config.input_size[::-1]
     processor.image_processor.do_align_long_axis = config.align_long_axis
@@ -131,8 +134,10 @@ def train():
     )
 
     best_val_metric = float("inf")
-    best_checkpoint_path = log_dir / "best_model.pth"
+    # best_checkpoint_path = log_dir / "best_model.pth"
+    # best_processor_path = log_dir / "best_processor.pth"
 
+    steps = 0
     # Trainingsloop
     for epoch in range(config.max_epochs):
         if verbose:
@@ -143,14 +148,13 @@ def train():
         train_loss = 0.0
 
         for batch_idx, batch in enumerate(train_dataloader):
-            image_tensors, decoder_input_ids, _ = batch
+            pixel_values, labels, _ = batch
 
-            image_tensors = image_tensors.to(device)
-            decoder_input_ids = decoder_input_ids.to(device)
-            # decoder_labels = decoder_labels.to(device)
+            pixel_values = pixel_values.to(device)
+            labels = labels.to(device)
 
             # Get loss (could also get logits, hidden_states, decoder_attentions, cross_attentions)
-            outputs = model(image_tensors, decoder_input_ids)[0]
+            outputs = model(pixel_values, labels=labels)
             loss = outputs.loss
 
             optimizer.zero_grad()
@@ -166,11 +170,12 @@ def train():
 
             # Log training metrics
             if batch_idx % 10 == 0:
-                step = epoch * len(train_dataloader) + batch_idx
-                logger.add_scalar("train/loss", loss.item(), step)
-                wandb.log({"train/loss": loss.item()}, step=step)
+                logger.add_scalar("train/loss", loss.item(), steps)
+                wandb.log({"train/loss": loss.item()}, step=steps)
                 if verbose:
                     print(f"Batch {batch_idx}, Loss: {loss.item()}")
+
+            steps += 1
 
         train_loss /= len(train_dataloader)
         if verbose:
@@ -187,8 +192,7 @@ def train():
                 pixel_values, labels, answers = batch
                 pixel_values = pixel_values.to(device)
                 labels = labels.to(device)
-                answers = answers.to(device)
-                decoder_input_ids = torch.full(
+                labels = torch.full(
                     (config.val_batch_sizes, 1),
                     model.config.decoder_start_token_id,
                     device=device,
@@ -196,7 +200,7 @@ def train():
 
                 outputs = model.generate(
                     pixel_values,
-                    decoder_input_ids=decoder_input_ids,
+                    decoder_input_ids=labels,
                     max_length=config.max_length,
                     early_stopping=True,
                     pad_token_id=processor.tokenizer.pad_token_id,
@@ -221,11 +225,19 @@ def train():
                 # Compute scores (e.g., normalized edit distance)
                 scores = []
                 for pred, answer in zip(predictions, answers):
-                    pred = re.sub(r"(?:(?<=>) | (?=", "", answer, count=1)
+                    pred = re.sub(r"(?:(?<=>) | (?=</s_))", "", pred)
+                    answer = re.sub(r"<.*?>", "", answer, count=1)
                     answer = answer.replace(processor.tokenizer.eos_token, "")
-                    scores.append(
-                        edit_distance(pred, answer) / max(len(pred), len(answer))
-                    )
+                    if len(answer) != 0 or len(pred) != 0:
+                        score = edit_distance(pred, answer) / max(
+                            len(pred), len(answer)
+                        )
+                        scores.append(score)
+
+                        if config.get("verbose", False):
+                            print(f"Prediction: {pred}")
+                            print(f"    Answer: {answer}")
+                            print(f" Normed ED: {score}")
 
                 val_loss += np.sum(scores)
                 total_samples += len(scores)
@@ -234,20 +246,22 @@ def train():
         if verbose:
             print(f"Epoch {epoch + 1} Validation edit distance: {val_metric}")
         logger.add_scalar("val/edit_distance", val_metric, epoch)
-        wandb.log({"val/edit_distance": val_metric}, step=epoch * len(train_dataloader))
+        wandb.log({"val/edit_distance": val_metric}, step=steps)
 
         # Save the best model
         if val_metric < best_val_metric:
             best_val_metric = val_metric
-            torch.save(
-                {
-                    "epoch": epoch,
-                    "model_state_dict": model.state_dict(),
-                    "optimizer_state_dict": optimizer.state_dict(),
-                    "val_metric": val_metric,
-                },
-                best_checkpoint_path,
-            )
+            # torch.save(
+            #     {
+            #         "epoch": epoch,
+            #         "model_state_dict": model.state_dict(),
+            #         "optimizer_state_dict": optimizer.state_dict(),
+            #         "val_metric": val_metric,
+            #     },
+            #     best_checkpoint_path,
+            # )
+            model.save_pretrained(log_dir)
+            processor.save_pretrained(log_dir)
             if verbose:
                 print(f"Best model saved at epoch {epoch + 1} with metric {val_metric}")
 
