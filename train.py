@@ -15,7 +15,7 @@ import wandb
 
 def prepare_dataloader(config, model):
     training_data = DonutDataset(
-        dataset_name_or_path="preprocessed_dataset/training_data",
+        dataset_name_or_path="preprocessed_dataset",
         donut_model=model,
         max_length=config.max_length,
         split="train",
@@ -23,7 +23,7 @@ def prepare_dataloader(config, model):
         # prompt_end_token="</s_funsd>",
     )
     test_data = DonutDataset(
-        dataset_name_or_path="preprocessed_dataset/testing_data",
+        dataset_name_or_path="preprocessed_dataset",
         donut_model=model,
         max_length=config.max_length,
         split="test",  # TODO: Check output of dataset (changes if it is train or not)
@@ -32,14 +32,14 @@ def prepare_dataloader(config, model):
     )
     train_dataloader = DataLoader(
         training_data,
-        batch_size=config.train_batch_size,
+        batch_size=config.train_batch_sizes,
         num_workers=config.num_workers,
         pin_memory=True,
         shuffle=True,
     )
     val_dataloader = DataLoader(
         test_data,
-        batch_size=config.val_batch_size,
+        batch_size=config.val_batch_sizes,
         pin_memory=True,
         shuffle=False,
     )
@@ -57,7 +57,7 @@ def train():
         print("Using device", device)
 
 
-    model = DonutModel.from_pretrained(
+    model: DonutModel = DonutModel.from_pretrained(
         config.pretrained_model_name_or_path,
         input_size=config.input_size,
         max_length=config.max_length,
@@ -73,7 +73,7 @@ def train():
     warmup_steps = config.warmup_steps
 
     max_iter = (config.max_epochs * config.num_training_samples_per_epoch) / (
-        config.train_batch_sizes[0]
+        config.train_batch_sizes
         * torch.cuda.device_count()
         * config.get("num_nodes", 1)
     )
@@ -125,9 +125,9 @@ def train():
         for batch_idx, batch in enumerate(train_dataloader):
             image_tensors, decoder_input_ids, decoder_labels = batch
 
-            image_tensors = torch.cat(image_tensors).to(device)
-            decoder_input_ids = torch.cat(decoder_input_ids).to(device)
-            decoder_labels = torch.cat(decoder_labels).to(device)
+            image_tensors = image_tensors.to(device)
+            decoder_input_ids = decoder_input_ids.to(device)
+            decoder_labels = decoder_labels.to(device)
 
             # Get loss (could also get logits, hidden_states, decoder_attentions, cross_attentions)
             loss = model(image_tensors, decoder_input_ids, decoder_labels)[0]

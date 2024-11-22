@@ -1,3 +1,5 @@
 donut-python
 numpy
 wandb
+tensorboard
+editdistance

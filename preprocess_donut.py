@@ -92,5 +92,5 @@ def preprocess_directory(directory_path, output_path):
 if __name__ == "__main__":
     test_directory = "dataset/testing_data"
     train_directory = "dataset/training_data"
-    preprocess_directory(test_directory, "preprocessed_dataset/testing_data")
-    preprocess_directory(train_directory, "preprocessed_dataset/training_data")
+    preprocess_directory(test_directory, "preprocessed_dataset/test")
+    preprocess_directory(train_directory, "preprocessed_dataset/train")
