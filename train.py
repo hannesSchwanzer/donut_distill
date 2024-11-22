@@ -18,10 +18,11 @@ from transformers import (
 from donut_dataset import DonutDataset, added_tokens
 
 
-def prepare_dataloader(config, processor):
+def prepare_dataloader(config, processor, model):
     training_data = DonutDataset(
         dataset_name_or_path="preprocessed_dataset",
-        donut_model=processor,
+        processor=processor,
+        model=model,
         max_length=config.max_length,
         split="train",
         task_start_token="<s_funsd>",  # TODO: Check if necessary
@@ -30,7 +31,8 @@ def prepare_dataloader(config, processor):
     )
     test_data = DonutDataset(
         dataset_name_or_path="preprocessed_dataset",
-        donut_model=processor,
+        processor=processor,
+        model=model,
         max_length=config.max_length,
         split="test",  # TODO: Check output of dataset (changes if it is train or not)
         task_start_token="<s_funsd>",
@@ -81,7 +83,7 @@ def train():
     processor.image_processor.size = config.input_size[::-1]
     processor.image_processor.do_align_long_axis = config.align_long_axis
 
-    train_dataloader, val_dataloader = prepare_dataloader(config, processor)
+    train_dataloader, val_dataloader = prepare_dataloader(config, processor, model)
 
     model.config.pad_token_id = processor.tokenizer.pad_token_id
     model.config.decoder_start_token_id = processor.tokenizer.convert_tokens_to_ids(

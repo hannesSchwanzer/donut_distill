@@ -1,2 +1,4 @@
 dataset/
 preprocessed_dataset/
+result/
+wandb/

@@ -4,3 +4,5 @@ tensorboard
 editdistance
 transformers
 datasets
+sentencepiece
+sconf

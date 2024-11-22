@@ -4,7 +4,7 @@ from typing import Any, List, Tuple
 import torch
 from torch.utils.data import Dataset
 from datasets import load_dataset
-from transformers import DonutProcessor
+from transformers import DonutProcessor, VisionEncoderDecoderModel
 
 # https://github.com/NielsRogge/Transformers-Tutorials/blob/master/Donut/CORD/Fine_tune_Donut_on_a_custom_dataset_(CORD)_with_PyTorch_Lightning.ipynb
 added_tokens = []
@@ -30,6 +30,7 @@ class DonutDataset(Dataset):
     def __init__(
         self,
         processor: DonutProcessor,
+        model: VisionEncoderDecoderModel,
         dataset_name_or_path: str,
         max_length: int,
         split: str = "train",
@@ -41,6 +42,7 @@ class DonutDataset(Dataset):
         super().__init__()
 
         self.processor = processor
+        self.model = model
         self.max_length = max_length
         self.split = split
         self.ignore_id = ignore_id
@@ -134,7 +136,7 @@ class DonutDataset(Dataset):
         """
         newly_added_num = self.processor.tokenizer.add_tokens(list_of_tokens)
         if newly_added_num > 0:
-            model.decoder.resize_token_embeddings(len(self.processor.tokenizer))
+            self.model.decoder.resize_token_embeddings(len(self.processor.tokenizer))
             added_tokens.extend(list_of_tokens)
 
     def __len__(self) -> int:
