@@ -107,17 +107,17 @@ class DonutDataset(Dataset):
                     keys = obj.keys()
                 for k in keys:
                     if update_special_tokens_for_json_key:
-                        self.add_tokens([rf"", rf""])
+                        self.add_tokens([fr"<s_{k}>", fr"</s_{k}>"])
                     output += (
-                        rf""
+                        rf"<s_{k}>"
                         + self.json2token(
                             obj[k], update_special_tokens_for_json_key, sort_json_key
                         )
-                        + rf""
+                        + rf"</s_{k}>"
                     )
                 return output
         elif type(obj) == list:
-            return r"".join(
+            return r"<sep/>".join(
                 [
                     self.json2token(
                         item, update_special_tokens_for_json_key, sort_json_key
