@@ -2,3 +2,4 @@ dataset/
 preprocessed_dataset/
 result/
 wandb/
+__pycache__/

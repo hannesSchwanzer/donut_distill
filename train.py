@@ -94,7 +94,7 @@ def train():
     optimizer = torch.optim.Adam(model.parameters(), lr=config.lr)
     warmup_steps = config.warmup_steps
 
-    max_iter = (config.max_epochs * config.num_training_samples_per_epoch) / (
+    max_iter = (config.max_epochs * len(train_dataloader.dataset)) / (
         config.train_batch_sizes
         * torch.cuda.device_count()
         * config.get("num_nodes", 1)

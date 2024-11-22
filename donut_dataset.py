@@ -5,6 +5,7 @@ import torch
 from torch.utils.data import Dataset
 from datasets import load_dataset
 from transformers import DonutProcessor, VisionEncoderDecoderModel
+from PIL import Image
 
 # https://github.com/NielsRogge/Transformers-Tutorials/blob/master/Donut/CORD/Fine_tune_Donut_on_a_custom_dataset_(CORD)_with_PyTorch_Lightning.ipynb
 added_tokens = []
@@ -152,10 +153,11 @@ class DonutDataset(Dataset):
             labels : masked labels (model doesn't need to predict prompt and pad token)
         """
         sample = self.dataset[idx]
-
+        image = sample["image"]
+        rgb_image = Image.merge("RGB", (image, image, image))
         # inputs
         pixel_values = self.processor(
-            sample["image"], random_padding=self.split == "train", return_tensors="pt"
+            rgb_image, random_padding=self.split == "train", return_tensors="pt"
         ).pixel_values
         pixel_values = pixel_values.squeeze()
 
