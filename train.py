@@ -1,4 +1,3 @@
-from donut import DonutDataset, DonutModel
 from sconf import Config
 from torch.utils.data import DataLoader
 import torch
@@ -11,23 +10,31 @@ import re
 import numpy as np
 from editdistance import eval as edit_distance
 import wandb
+from transformers import (
+    DonutProcessor,
+    VisionEncoderDecoderModel,
+    VisionEncoderDecoderConfig,
+)
+from donut_dataset import DonutDataset, added_tokens
 
 
-def prepare_dataloader(config, model):
+def prepare_dataloader(config, processor):
     training_data = DonutDataset(
         dataset_name_or_path="preprocessed_dataset",
-        donut_model=model,
+        donut_model=processor,
         max_length=config.max_length,
         split="train",
         task_start_token="<s_funsd>",  # TODO: Check if necessary
+        sort_json_key=config.sort_json_key,
         # prompt_end_token="</s_funsd>",
     )
     test_data = DonutDataset(
         dataset_name_or_path="preprocessed_dataset",
-        donut_model=model,
+        donut_model=processor,
         max_length=config.max_length,
         split="test",  # TODO: Check output of dataset (changes if it is train or not)
         task_start_token="<s_funsd>",
+        sort_json_key=config.sort_json_key,
         # prompt_end_token="</s_funsd>",
     )
     train_dataloader = DataLoader(
@@ -44,6 +51,10 @@ def prepare_dataloader(config, model):
         shuffle=False,
     )
 
+    print("Added tokens:", len(added_tokens))
+    print(
+        "Token", len(added_tokens) - 1, ":", processor.decode([len(added_tokens) - 1])
+    )
     return train_dataloader, val_dataloader
 
 
@@ -56,17 +67,26 @@ def train():
     if verbose:
         print("Using device", device)
 
+    donut_config = VisionEncoderDecoderConfig.from_pretrained(
+        "naver-clova-ix/donut-base"
+    )  # TODO: Check config
+    donut_config.encoder.image_size = config.input_size
+    donut_config.decoder.max_length = config.max_length
 
-    model: DonutModel = DonutModel.from_pretrained(
-        config.pretrained_model_name_or_path,
-        input_size=config.input_size,
-        max_length=config.max_length,
-        align_long_axis=config.align_long_axis,
-        ignore_mismatched_sizes=True,
+    processor = DonutProcessor.from_pretrained("naver-clova-ix/donut-base")
+    model = VisionEncoderDecoderModel.from_pretrained(
+        "naver-clova-ix/donut-base", config=donut_config
     )
-    model = model.to(device)
 
-    train_dataloader, val_dataloader = prepare_dataloader(config, model)
+    processor.image_processor.size = config.input_size[::-1]
+    processor.image_processor.do_align_long_axis = config.align_long_axis
+
+    train_dataloader, val_dataloader = prepare_dataloader(config, processor)
+
+    model.config.pad_token_id = processor.tokenizer.pad_token_id
+    model.config.decoder_start_token_id = processor.tokenizer.convert_tokens_to_ids(
+        [""]
+    )[0]
 
     # Setup Optimizer and Scheduler
     optimizer = torch.optim.Adam(model.parameters(), lr=config.lr)
@@ -93,9 +113,7 @@ def train():
     scheduler = cosine_scheduler(optimizer, max_iter, warmup_steps)
 
     # Setup Logging and Checkpointing
-    log_dir = (
-        Path(config.result_path) / "donut_funsd"
-    )
+    log_dir = Path(config.result_path) / "donut_funsd"
     log_dir.mkdir(parents=True, exist_ok=True)
     logger = SummaryWriter(log_dir=log_dir)
 
@@ -123,14 +141,15 @@ def train():
         train_loss = 0.0
 
         for batch_idx, batch in enumerate(train_dataloader):
-            image_tensors, decoder_input_ids, decoder_labels = batch
+            image_tensors, decoder_input_ids, _ = batch
 
             image_tensors = image_tensors.to(device)
             decoder_input_ids = decoder_input_ids.to(device)
-            decoder_labels = decoder_labels.to(device)
+            # decoder_labels = decoder_labels.to(device)
 
             # Get loss (could also get logits, hidden_states, decoder_attentions, cross_attentions)
-            loss = model(image_tensors, decoder_input_ids, decoder_labels)[0]
+            outputs = model(image_tensors, decoder_input_ids)[0]
+            loss = outputs.loss
 
             optimizer.zero_grad()
             loss.backward()
@@ -163,44 +182,57 @@ def train():
 
         with torch.no_grad():
             for batch in val_dataloader:
-                image_tensors, decoder_input_ids, prompt_end_idxs, answers = batch
-                image_tensors = image_tensors.to(device)
-                decoder_input_ids = decoder_input_ids.to(device)
+                pixel_values, labels, answers = batch
+                pixel_values = pixel_values.to(device)
+                labels = labels.to(device)
+                answers = answers.to(device)
+                decoder_input_ids = torch.full(
+                    (config.val_batch_sizes, 1),
+                    model.config.decoder_start_token_id,
+                    device=device,
+                )
 
-                # Prepare decoder prompts
-                decoder_prompts = pad_sequence(
-                    [
-                        input_id[: end_idx + 1]
-                        for input_id, end_idx in zip(decoder_input_ids, prompt_end_idxs)
-                    ],
-                    batch_first=True,
-                ).to(device)
+                outputs = model.generate(
+                    pixel_values,
+                    decoder_input_ids=decoder_input_ids,
+                    max_length=config.max_length,
+                    early_stopping=True,
+                    pad_token_id=processor.tokenizer.pad_token_id,
+                    eos_token_id=processor.tokenizer.eos_token_id,
+                    use_cache=True,
+                    num_beams=1,
+                    bad_words_ids=[[processor.tokenizer.unk_token_id]],
+                    return_dict_in_generate=True,
+                )
 
                 # Model inference
-                preds = model.inference(
-                    image_tensors=image_tensors,
-                    prompt_tensors=decoder_prompts,
-                    return_json=False,
-                    return_attentions=False,
-                )["predictions"]
+                predictions = []
+                for seq in processor.tokenizer.batch_decode(outputs.sequences):
+                    seq = seq.replace(processor.tokenizer.eos_token, "").replace(
+                        processor.tokenizer.pad_token, ""
+                    )
+                    seq = re.sub(
+                        r"<.*?>", "", seq, count=1
+                    ).strip()  # remove first task start token
+                    predictions.append(seq)
 
                 # Compute scores (e.g., normalized edit distance)
                 scores = []
-                for pred, answer in zip(preds, answers):
-                    pred = re.sub(r"(?:(?<=>) | (?=</s_))", "", pred)
-                    answer = re.sub(r"<.*?>", "", answer, count=1)
-                    answer = answer.replace(model.decoder.tokenizer.eos_token, "")
-                    score = edit_distance(pred, answer) / max(len(pred), len(answer))
-                    scores.append(score)
+                for pred, answer in zip(predictions, answers):
+                    pred = re.sub(r"(?:(?<=>) | (?=", "", answer, count=1)
+                    answer = answer.replace(processor.tokenizer.eos_token, "")
+                    scores.append(
+                        edit_distance(pred, answer) / max(len(pred), len(answer))
+                    )
 
                 val_loss += np.sum(scores)
                 total_samples += len(scores)
 
         val_metric = val_loss / total_samples
         if verbose:
-            print(f"Epoch {epoch + 1} Validation Metric: {val_metric}")
-        logger.add_scalar("val/metric", val_metric, epoch)
-        wandb.log({"val/metric": val_metric}, step=epoch*len(train_dataloader))
+            print(f"Epoch {epoch + 1} Validation edit distance: {val_metric}")
+        logger.add_scalar("val/edit_distance", val_metric, epoch)
+        wandb.log({"val/edit_distance": val_metric}, step=epoch * len(train_dataloader))
 
         # Save the best model
         if val_metric < best_val_metric:

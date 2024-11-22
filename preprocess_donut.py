@@ -74,9 +74,7 @@ def preprocess_directory(directory_path, output_path):
         annotation_path = path.join(annotation_directory, f"{id}.json")
 
         preprocessed_annotation = preprocess_annotations(annotation_path)
-        gt = {
-            "gt_parse": preprocessed_annotation
-        }
+        gt = {"gt_parse": preprocessed_annotation}
         file_metadata = {
             "file_name": f"{id}.png",
             "ground_truth": json.dumps(gt),
