@@ -28,8 +28,8 @@ def preprocess_annotations(annotation_path):
         if field["label"] != "question":
             continue
 
-        if len(links) == 0:
-            continue
+        # if len(links) == 0:
+        #     continue
 
         answers = []
         for link in links:
