@@ -4,7 +4,7 @@ from pathlib import Path
 import shutil
 
 
-def preprocess_annotations(annotation_path):
+def preprocess_annotations_links(annotation_path):
     with open(annotation_path, "r") as f:
         data = json.load(f)
 
@@ -28,20 +28,12 @@ def preprocess_annotations(annotation_path):
         if field["label"] != "question":
             continue
 
-        # if len(links) == 0:
-        #     continue
-
         answers = []
         for link in links:
             if field["id"] in link:
                 link.remove(field["id"])
 
             if id_to_text[link[0]]["label"] != "answer":
-                # print(f"Link is not of type answer ({annotation_path}):")
-                # print("\tquestion:", question_text)
-                # print(
-                #     "\tlink:", id_to_text[link[0]]["label"], id_to_text[link[0]]["text"]
-                # )
                 continue
 
             answers.append(id_to_text[link[0]]["text"])
@@ -53,10 +45,28 @@ def preprocess_annotations(annotation_path):
         else:
             qa_pairs.append({"question": question_text, "answers": answers})
 
-    return {"qa_pairs": qa_pairs}
+    return {"form": qa_pairs}
 
 
-def preprocess_directory(directory_path, output_path):
+def preprocess_annotations_labels(annotation_path):
+    with open(annotation_path, "r") as f:
+        data = json.load(f)
+
+    # Extract the form field information
+    fields = data.get("form", [])
+
+    result = []
+    for field in fields:
+        text = field["text"]
+        label = field["label"]
+
+        result.append({"label": label, "text": text})
+
+    return {"form": result}
+
+
+
+def preprocess_directory(directory_path, output_path, process_annotation_fn=preprocess_annotations_links):
     # Create new directories and metadata file
     Path(output_path).mkdir(parents=True, exist_ok=True)
     metadata_file = open(path.join(output_path, "metadata.jsonl"), "w")
@@ -73,7 +83,7 @@ def preprocess_directory(directory_path, output_path):
         image_path = path.join(image_directory, f"{id}.png")
         annotation_path = path.join(annotation_directory, f"{id}.json")
 
-        preprocessed_annotation = preprocess_annotations(annotation_path)
+        preprocessed_annotation = process_annotation_fn(annotation_path)
         gt = {"gt_parse": preprocessed_annotation}
         file_metadata = {
             "file_name": f"{id}.png",
@@ -90,5 +100,6 @@ def preprocess_directory(directory_path, output_path):
 if __name__ == "__main__":
     test_directory = "dataset/testing_data"
     train_directory = "dataset/training_data"
-    preprocess_directory(test_directory, "preprocessed_dataset/test")
-    preprocess_directory(train_directory, "preprocessed_dataset/train")
+    process_annotation_fn=preprocess_annotations_labels
+    preprocess_directory(test_directory, "preprocessed_dataset/test", process_annotation_fn)
+    preprocess_directory(train_directory, "preprocessed_dataset/train", process_annotation_fn)

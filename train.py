@@ -15,7 +15,7 @@ from transformers import (
     VisionEncoderDecoderModel,
     VisionEncoderDecoderConfig,
 )
-from donut_dataset import DonutDataset, added_tokens
+from donut_dataset import DonutDataset
 
 TOKENIZERS_PARALLELISM = False
 
@@ -27,7 +27,7 @@ def prepare_dataloader(config, processor, model):
         model=model,
         max_length=config.max_length,
         split="train",
-        task_start_token="<s_funsd>",  # TODO: Check if necessary
+        # task_start_token="<s_funsd>",  # TODO: Check if necessary
         sort_json_key=config.sort_json_key,
         # prompt_end_token="</s_funsd>",
     )
@@ -37,7 +37,7 @@ def prepare_dataloader(config, processor, model):
         model=model,
         max_length=config.max_length,
         split="test",  # TODO: Check output of dataset (changes if it is train or not)
-        task_start_token="<s_funsd>",
+        # task_start_token="<s_funsd>",
         sort_json_key=config.sort_json_key,
         # prompt_end_token="</s_funsd>",
     )
@@ -55,10 +55,6 @@ def prepare_dataloader(config, processor, model):
         shuffle=False,
     )
 
-    print("Added tokens:", len(added_tokens))
-    print(
-        "Token", len(added_tokens) - 1, ":", processor.decode([len(added_tokens) - 1])
-    )
     return train_dataloader, val_dataloader
 
 
@@ -119,7 +115,8 @@ def train():
 
     # Setup Logging and Checkpointing
     log_dir = Path(config.result_path) / "donut_funsd"
-    log_dir.mkdir(parents=True, exist_ok=True)
+    model_dir = log_dir / "model"
+    model_dir.mkdir(parents=True, exist_ok=True)
     logger = SummaryWriter(log_dir=log_dir)
 
     wandb.init(
@@ -260,8 +257,8 @@ def train():
             #     },
             #     best_checkpoint_path,
             # )
-            model.save_pretrained(log_dir)
-            processor.save_pretrained(log_dir)
+            model.save_pretrained(model_dir)
+            processor.save_pretrained(model_dir)
             if verbose:
                 print(f"Best model saved at epoch {epoch + 1} with metric {val_metric}")
 
