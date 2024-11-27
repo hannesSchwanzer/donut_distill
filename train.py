@@ -16,6 +16,7 @@ from transformers import (
     VisionEncoderDecoderConfig,
 )
 from donut_dataset import DonutDataset
+from tqdm import tqdm
 
 TOKENIZERS_PARALLELISM = False
 
@@ -117,10 +118,10 @@ def train():
     log_dir = Path(config.result_path) / "donut_funsd"
     model_dir = log_dir / "model"
     model_dir.mkdir(parents=True, exist_ok=True)
-    logger = SummaryWriter(log_dir=log_dir)
 
     wandb.init(
         project="donut-funsd",
+        name="train-torch",
         config={
             "learning_rate": config.lr,
             "architecture": "Donut",
@@ -144,17 +145,15 @@ def train():
         model.train()
         train_loss = 0.0
 
-        for batch_idx, batch in enumerate(train_dataloader):
+        for batch in tqdm(train_dataloader, desc=f"Training Epoch {epoch+1}"):
             pixel_values, labels, _ = batch
-
             pixel_values = pixel_values.to(device)
             labels = labels.to(device)
 
             # Get loss (could also get logits, hidden_states, decoder_attentions, cross_attentions)
+            optimizer.zero_grad()
             outputs = model(pixel_values, labels=labels)
             loss = outputs.loss
-
-            optimizer.zero_grad()
             loss.backward()
 
             # Gradient clipping
@@ -166,38 +165,42 @@ def train():
             train_loss += loss.item()
 
             # Log training metrics
-            if batch_idx % 10 == 0:
-                logger.add_scalar("train/loss", loss.item(), steps)
-                wandb.log({"train/loss": loss.item()}, step=steps)
-                if verbose:
-                    print(f"Batch {batch_idx}, Loss: {loss.item()}")
+            # if steps % 10 == 0:
+            #     wandb.log({"train/loss": loss.item()}, step=steps)
+            #     if verbose:
+            #         print(f"Batch {batch_idx}, Loss: {loss.item()}")
 
             steps += 1
 
-        train_loss /= len(train_dataloader)
+        avg_train_loss = train_loss / len(train_dataloader)
         if verbose:
-            print(f"Epoch {epoch + 1} Train Loss: {train_loss}")
+            print(f"Epoch {epoch + 1} Train Loss: {avg_train_loss}")
 
         # VALIDATION
         model.eval()
-        val_loss = 0.0
-        val_metric = 0.0
+        val_edit_distance = 0.0
+        avg_val_edit_distance = 0.0
         total_samples = 0
 
         with torch.no_grad():
-            for batch in val_dataloader:
+            for batch in tqdm(val_dataloader, desc=f"Validation Epoch {epoch+1}"):
                 pixel_values, labels, answers = batch
                 pixel_values = pixel_values.to(device)
-                labels = labels.to(device)
-                labels = torch.full(
-                    (config.val_batch_sizes, 1),
+                # labels = labels.to(device)
+                # labels = torch.full(
+                #     (config.val_batch_sizes, 1),
+                #     model.config.decoder_start_token_id,
+                #     device=device,
+                # )
+                decoder_input_ids = torch.full(
+                    (config.val_batch_size, 1),
                     model.config.decoder_start_token_id,
-                    device=device,
+                    device=device
                 )
 
                 outputs = model.generate(
                     pixel_values,
-                    decoder_input_ids=labels,
+                    decoder_input_ids=decoder_input_ids,
                     max_length=config.max_length,
                     early_stopping=True,
                     pad_token_id=processor.tokenizer.pad_token_id,
@@ -225,29 +228,30 @@ def train():
                     pred = re.sub(r"(?:(?<=>) | (?=</s_))", "", pred)
                     answer = re.sub(r"<.*?>", "", answer, count=1)
                     answer = answer.replace(processor.tokenizer.eos_token, "")
-                    if len(answer) != 0 or len(pred) != 0:
-                        score = edit_distance(pred, answer) / max(
-                            len(pred), len(answer)
-                        )
-                        scores.append(score)
+                    score = edit_distance(pred, answer) / max(
+                        len(pred), len(answer)
+                    )
+                    scores.append(score)
 
-                        if config.get("verbose", False):
-                            print(f"Prediction: {pred}")
-                            print(f"    Answer: {answer}")
-                            print(f" Normed ED: {score}")
+                    if config.get("verbose", False):
+                        print(f"Prediction: {pred}")
+                        print(f"    Answer: {answer}")
+                        print(f" Normed ED: {scores[0]}")
 
-                val_loss += np.sum(scores)
+                val_edit_distance += np.sum(scores)
                 total_samples += len(scores)
 
-        val_metric = val_loss / total_samples
+        avg_val_edit_distance = val_edit_distance / total_samples
         if verbose:
-            print(f"Epoch {epoch + 1} Validation edit distance: {val_metric}")
-        logger.add_scalar("val/edit_distance", val_metric, epoch)
-        wandb.log({"val/edit_distance": val_metric}, step=steps)
+            print(f"Epoch {epoch + 1} Validation edit distance: {avg_val_edit_distance}")
+        wandb.log({
+            "train/avg_loss": avg_train_loss,
+            "validate/avg_edit_distance": avg_val_edit_distance,
+        })
 
         # Save the best model
-        if val_metric < best_val_metric:
-            best_val_metric = val_metric
+        if avg_val_edit_distance < best_val_metric:
+            best_val_metric = avg_val_edit_distance
             # torch.save(
             #     {
             #         "epoch": epoch,
@@ -260,13 +264,11 @@ def train():
             model.save_pretrained(model_dir)
             processor.save_pretrained(model_dir)
             if verbose:
-                print(f"Best model saved at epoch {epoch + 1} with metric {val_metric}")
+                print(f"Best model saved at epoch {epoch + 1} with metric {avg_val_edit_distance}")
 
         # Step the scheduler
         scheduler.step()
 
-    # Close logger
-    logger.close()
     if verbose:
         print(f"Training complete. Best validation metric: {best_val_metric}")
 
