@@ -107,7 +107,7 @@ class DonutDataset(Dataset):
                     keys = obj.keys()
                 for k in keys:
                     if update_special_tokens_for_json_key:
-                        self.add_tokens([fr"<s_{k}>", fr"</s_{k}>"])
+                        self.add_tokens([rf"<s_{k}>", rf"</s_{k}>"])
                     output += (
                         rf"<s_{k}>"
                         + self.json2token(
@@ -138,12 +138,13 @@ class DonutDataset(Dataset):
         newly_added_num = self.processor.tokenizer.add_tokens(list_of_tokens)
         if newly_added_num > 0:
             self.model.decoder.resize_token_embeddings(len(self.processor.tokenizer))
+            self.model.config.vocab_size = len(self.processor.tokenizer)
             added_tokens.extend(list_of_tokens)
 
     def __len__(self) -> int:
         return self.dataset_length
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def __getitem__(self, idx: int):
         """
         Load image from image_path of given dataset_path and convert into input_tensor and labels
         Convert gt data into input_ids (tokenized string)
@@ -153,11 +154,11 @@ class DonutDataset(Dataset):
             labels : masked labels (model doesn't need to predict prompt and pad token)
         """
         sample = self.dataset[idx]
-        image = sample["image"]
-        rgb_image = Image.merge("RGB", (image, image, image))
+        image = sample["image"].convert("RGB")
+        # rgb_image = Image.merge("RGB", (image, image, image))
         # inputs
         pixel_values = self.processor(
-            rgb_image, random_padding=self.split == "train", return_tensors="pt"
+            image, random_padding=self.split == "train", return_tensors="pt"
         ).pixel_values
         pixel_values = pixel_values.squeeze()
 
@@ -174,9 +175,15 @@ class DonutDataset(Dataset):
             return_tensors="pt",
         )["input_ids"].squeeze(0)
 
-        labels = input_ids.clone()
-        labels[labels == self.processor.tokenizer.pad_token_id] = (
-            self.ignore_id
-        )  # model doesn't need to predict pad token
-        # labels[: torch.nonzero(labels == self.prompt_end_token_id).sum() + 1] = self.ignore_id  # model doesn't need to predict prompt (for VQA)
-        return pixel_values, labels, target_sequence
+        if self.split == "train":
+            labels = input_ids.clone()
+            labels[labels == self.processor.tokenizer.pad_token_id] = (
+                self.ignore_id
+            )  # model doesn't need to predict pad token
+            # labels[: torch.nonzero(labels == self.prompt_end_token_id).sum() + 1] = self.ignore_id  # model doesn't need to predict prompt (for VQA)
+            return pixel_values, labels, target_sequence
+        else:
+            prompt_end_index = torch.nonzero(
+                input_ids == self.prompt_end_token_id
+            ).sum()  # return prompt end index instead of target output labels
+            return pixel_values, input_ids, prompt_end_index, target_sequence

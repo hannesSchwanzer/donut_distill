@@ -6,3 +6,6 @@ train:
 
 preprocess:
 	$(PYTHON_TARGET) preprocess_donut.py
+
+watch:
+	watch nvidia-smi
