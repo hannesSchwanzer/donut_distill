@@ -39,8 +39,8 @@ def prepare_dataloader(config, model, processor):
         sort_json_key=False,  # cord dataset is preprocessed, so no need for this
     )
 
-    train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=4)
-    val_dataloader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=4)
+    train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=config.num_workers)
+    val_dataloader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=config.num_worker)
     
     return train_dataloader, val_dataloader
 
@@ -68,7 +68,7 @@ def train():
     model.to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=config.get("lr"))
-    # scaler = torch.cuda.amp.GradScaler()
+    scaler = torch.amp.GradScaler('cuda')
 
     wandb.init(
         project="donut-funsd",
@@ -97,15 +97,16 @@ def train():
             pixel_values = pixel_values.to(device)
             labels = labels.to(device)
 
-            outputs = model(pixel_values, labels=labels)
-            loss = outputs.loss
+            with torch.amp.autocast_mode('cuda'):
+                outputs = model(pixel_values, labels=labels)
+                loss = outputs.loss
             optimizer.zero_grad()
-            loss.backward()
-            # scaler.scale(loss).backward()
+            # loss.backward()
+            scaler.scale(loss).backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), config["gradient_clip_val"])
-            # scaler.step(optimizer)
-            # scaler.update()
-            optimizer.step()
+            scaler.step(optimizer)
+            scaler.update()
+            # optimizer.step()
             losses.append(loss.item())
 
             # Log training metrics
@@ -126,48 +127,49 @@ def train():
                 # decoder_input_ids = torch.full(
                 #     (batch_size, 1), model.config.decoder_start_token_id, device=device
                 # )
-                decoder_prompts = pad_sequence(
-                    [input_id[: end_idx + 1] for input_id, end_idx in zip(decoder_input_ids, prompt_end_idxs)],
-                    batch_first=True,
-                )
+                with torch.amp.autocast_mode('cuda'):
+                    decoder_prompts = pad_sequence(
+                        [input_id[: end_idx + 1] for input_id, end_idx in zip(decoder_input_ids, prompt_end_idxs)],
+                        batch_first=True,
+                    ).to(device)
 
-                outputs = model.generate(
-                    pixel_values,
-                    decoder_input_ids=decoder_prompts,
-                    max_length=config.max_length,
-                    early_stopping=True,
-                    pad_token_id=processor.tokenizer.pad_token_id,
-                    eos_token_id=processor.tokenizer.eos_token_id,
-                    use_cache=True,
-                    num_beams=1,
-                    bad_words_ids=[[processor.tokenizer.unk_token_id]],
-                    return_dict_in_generate=True,
-                )
-
-                predictions = []
-                for seq in processor.tokenizer.batch_decode(outputs.sequences):
-                    seq = seq.replace(processor.tokenizer.eos_token, "").replace(
-                        processor.tokenizer.pad_token, ""
-                    )
-                    seq = re.sub(
-                        r"<.*?>", "", seq, count=1
-                    ).strip()  # remove first task start token
-                    predictions.append(seq)
-
-                scores = []
-                for pred, answer in zip(predictions, answers):
-                    pred = re.sub(r"(?:(?<=>) | (?=</s_))", "", answer, count=1)
-                    answer = re.sub(r"<.*?>", "", answer, count=1)
-                    answer = answer.replace(processor.tokenizer.eos_token, "")
-                    scores.append(
-                        edit_distance(pred, answer) / max(len(pred), len(answer))
+                    outputs = model.generate(
+                        pixel_values,
+                        decoder_input_ids=decoder_prompts,
+                        max_length=config.max_length,
+                        early_stopping=True,
+                        pad_token_id=processor.tokenizer.pad_token_id,
+                        eos_token_id=processor.tokenizer.eos_token_id,
+                        use_cache=True,
+                        num_beams=1,
+                        bad_words_ids=[[processor.tokenizer.unk_token_id]],
+                        return_dict_in_generate=True,
                     )
 
-                    if config.get("verbose", False) and len(scores) == 1:
-                        print("\n----------------------------------------\n")
-                        print(f"Prediction: {pred}")
-                        print(f"\tAnswer: {answer}")
-                        print(f"\tNormed ED: {scores[0]}")
+                    predictions = []
+                    for seq in processor.tokenizer.batch_decode(outputs.sequences):
+                        seq = seq.replace(processor.tokenizer.eos_token, "").replace(
+                            processor.tokenizer.pad_token, ""
+                        )
+                        seq = re.sub(
+                            r"<.*?>", "", seq, count=1
+                        ).strip()  # remove first task start token
+                        predictions.append(seq)
+
+                    scores = []
+                    for pred, answer in zip(predictions, answers):
+                        pred = re.sub(r"(?:(?<=>) | (?=</s_))", "", pred, count=1)
+                        answer = re.sub(r"<.*?>", "", answer, count=1)
+                        answer = answer.replace(processor.tokenizer.eos_token, "")
+                        scores.append(
+                            edit_distance(pred, answer) / max(len(pred), len(answer))
+                        )
+
+                        if config.get("verbose", False) and len(scores) == 1:
+                            print("\n----------------------------------------\n")
+                            print(f"\nPrediction: {pred}")
+                            print(f"\n\tAnswer: {answer}")
+                            print(f"\n\tNormed ED: {scores[0]}")
 
                 val_scores.extend(scores)
 
@@ -181,10 +183,10 @@ def train():
 
 
         if avg_val_score < best_val_metric:
+            print("Saving Model!")
             best_val_metric = avg_val_score
             model.save_pretrained(model_dir)
             processor.save_pretrained(processor_dir)
-            # donut_config.save_pretrained(model_dir)
 
 if __name__ == "__main__":
     train()

@@ -1,7 +1,6 @@
 from transformers import (
     DonutProcessor,
     VisionEncoderDecoderModel,
-    VisionEncoderDecoderConfig,
 )
 import os
 from PIL import Image

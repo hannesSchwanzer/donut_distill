@@ -60,9 +60,9 @@ def preprocess_annotations_labels(annotation_path):
         text = field["text"]
         label = field["label"]
 
-        result.append({"label": label, "text": text})
+        result.append({"text": text, "label": label})
 
-    return {"form": result}
+    return {"elements": result}
 
 
 
