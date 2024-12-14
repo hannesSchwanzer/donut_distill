@@ -8,7 +8,7 @@ from transformers import DonutProcessor, VisionEncoderDecoderModel
 from PIL import Image
 
 # https://github.com/NielsRogge/Transformers-Tutorials/blob/master/Donut/CORD/Fine_tune_Donut_on_a_custom_dataset_(CORD)_with_PyTorch_Lightning.ipynb
-added_tokens = []
+added_tokens = ["answer", "question", "header", "other"]
 
 
 class DonutDataset(Dataset):

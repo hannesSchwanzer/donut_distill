@@ -39,8 +39,8 @@ def prepare_dataloader(config, model, processor):
         sort_json_key=False,  # cord dataset is preprocessed, so no need for this
     )
 
-    train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=config.num_workers)
-    val_dataloader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=config.num_worker)
+    train_dataloader = DataLoader(train_dataset, batch_size=config.train_batch_sizes, shuffle=True, num_workers=config.num_workers)
+    val_dataloader = DataLoader(val_dataset, batch_size=config.val_batch_sizes, shuffle=False, num_workers=config.num_workers)
     
     return train_dataloader, val_dataloader
 
@@ -97,7 +97,7 @@ def train():
             pixel_values = pixel_values.to(device)
             labels = labels.to(device)
 
-            with torch.amp.autocast_mode('cuda'):
+            with torch.autocast(device_type="cuda"):
                 outputs = model(pixel_values, labels=labels)
                 loss = outputs.loss
             optimizer.zero_grad()
@@ -127,7 +127,7 @@ def train():
                 # decoder_input_ids = torch.full(
                 #     (batch_size, 1), model.config.decoder_start_token_id, device=device
                 # )
-                with torch.amp.autocast_mode('cuda'):
+                with torch.autocast(device_type="cuda"):
                     decoder_prompts = pad_sequence(
                         [input_id[: end_idx + 1] for input_id, end_idx in zip(decoder_input_ids, prompt_end_idxs)],
                         batch_first=True,
