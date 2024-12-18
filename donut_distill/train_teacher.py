@@ -99,11 +99,8 @@ def train():
     # Optimizer and Scheduler
     optimizer = torch.optim.Adam(model.parameters(), lr=config.get("lr"))
     if int(config.get("max_epochs", -1)) > 0:
-        assert (
-            len(config.train_batch_sizes) == 1
-        ), "Set max_epochs only if the number of datasets is 1"
         max_iter = (config.max_epochs * config.num_training_samples_per_epoch) / (
-            config.train_batch_sizes[0]
+            config.train_batch_sizes
             * torch.cuda.device_count()
             * config.get("num_nodes", 1)
         )
