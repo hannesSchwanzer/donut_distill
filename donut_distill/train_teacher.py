@@ -3,7 +3,7 @@ from transformers import (
     VisionEncoderDecoderModel,
     VisionEncoderDecoderConfig,
 )
-from donut_dataset import DonutDataset
+from .donut_dataset import DonutDataset
 from torch.utils.data import DataLoader
 import re
 from nltk import edit_distance
