@@ -20,7 +20,7 @@ from torch.optim.lr_scheduler import LambdaLR
 
 TOKENIZERS_PARALLELISM = False
 MODEL_ID = "naver-clova-ix/donut-base"
-MODEL_ID = "naver-clova-ix/donut-base-finetuned-cord-v2"
+# MODEL_ID = "naver-clova-ix/donut-base-finetuned-cord-v2"
 
 
 def prepare_dataloader(config, model, processor):
