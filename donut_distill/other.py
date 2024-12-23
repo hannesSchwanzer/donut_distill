@@ -50,12 +50,16 @@ def inference(
     return decoded_output
 
 
-def postprocess_donut_funsd(predictions: List[dict]):
-    result = []
-    if not isinstance(predictions, list):
-        return result
+def postprocess_donut_funsd(outputs: str, processor: DonutProcessor) -> List[dict]:
+    outputs = outputs.replace(processor.tokenizer.eos_token, "").replace(processor.tokenizer.pad_token, "")
+    outputs = re.sub(r"<.*?>", "", seq, count=1).strip()  # remove first task start token
+    outputs = processor.token2json(outputs)
 
-    for prediction in predictions:
+    if not isinstance(outputs, list):
+        return []
+
+    result = []
+    for prediction in outputs:
         if ("text" not in prediction or "label" not in prediction
             or not isinstance(prediction["text"], str) or not isinstance(prediction["label"], str)
             or not prediction["text"] or not prediction["label"]):

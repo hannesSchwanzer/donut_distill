@@ -3,3 +3,4 @@ preprocessed_dataset/
 result/
 wandb/
 __pycache__/
+__MACOSX/

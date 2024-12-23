@@ -1,10 +1,28 @@
-NCLASSES            = 50                            # number of recipe classes for your classifier
 
 ''' transformer parameters '''
-MODEL_ID            = 'naver-clova-ix/donut-base'      # use this pre-trained transformer as your backbone.
-PAD_TOKEN_ID        = 1                             # the transformer pads with tokens of this ID.
-D                   = 768                           # dimensionality of the transformer's embeddings.
-MAX_LENGTH          = 512                           # maximum sequence length accepted by the transformer.
+MODEL_ID            = 'naver-clova-ix/donut-base'
+MAX_LENGTH          = 768
+RESUME_FROM_CHECKPOINT_PATH= None # only used for resume_from_checkpoint option in PL
+RESULT_PATH= "./result"
+PRETRAINED_MODEL_NAME_OR_PATH= "naver-clova-ix/donut-base" # loading a pre-trained model (from moldehub or path)
+DATASET_NAME_OR_PATHS= ["./preprocessed_dataset/training_data"] # loading datasets (from moldehub or path)
+SORT_JSON_KEY= False
+TRAIN_BATCH_SIZES= 4
+VAL_BATCH_SIZES= 2
+INPUT_SIZE= [800, 1000] # when the input resolution differs from the pre-training setting, some weights will be newly initialized (but the model training would be okay)
+ALIGN_LONG_AXIS= False
+NUM_NODES= 1
+LR= 3e-5
+WARMUP_STEPS= 60 # 800/8*30/10, 10%
+MAX_EPOCHS= 50
+MAX_STEPS= -1
+NUM_WORKERS= 1
+# val_check_interval: 1.0
+# check_val_every_n_epoch: 3
+GRADIENT_CLIP_VAL= 1.0
+VERBOSE= True
+
+
 
 ''' training parameters'''
 BATCH_SIZE          = 5

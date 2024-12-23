@@ -40,4 +40,15 @@ python train.py
 - [x] Create trainingsloop
 - [x] Calculate stats (loss, acc)
 - [x] Log on wandb
-- [ ] Run training
+- [x] Run training
+4. Optimize Training
+- [x] Postprocessing
+- [x] F1-Score
+- [ ] Test out different generation parameters
+5. Distilling the model
+- [x] Create student model
+- [ ] Implement training
+- [ ] Remove first layer from each stage one by one
+6. Other tasks
+- [ ] Messure size of each stage and layer
+- [ ] CLI for model
