@@ -50,25 +50,29 @@ def inference(
     return decoded_output
 
 
-def postprocess_donut_funsd(outputs: str, processor: DonutProcessor) -> List[dict]:
-    outputs = outputs.replace(processor.tokenizer.eos_token, "").replace(processor.tokenizer.pad_token, "")
-    outputs = re.sub(r"<.*?>", "", seq, count=1).strip()  # remove first task start token
-    outputs = processor.token2json(outputs)
-
-    if not isinstance(outputs, list):
-        return []
-
+def postprocess_donut_funsd(outputs: str | dict | list, processor: DonutProcessor) -> List[dict]:
     result = []
-    for prediction in outputs:
-        if ("text" not in prediction or "label" not in prediction
-            or not isinstance(prediction["text"], str) or not isinstance(prediction["label"], str)
-            or not prediction["text"] or not prediction["label"]):
-            continue
 
-        result.append({
-            "text": prediction["text"],
-            "label": prediction["label"]
-        })
+    if type(outputs) is str:
+        outputs = outputs.replace(processor.tokenizer.eos_token, "").replace(processor.tokenizer.pad_token, "")
+        # outputs = re.sub(r"<.*?>", "", outputs, count=1).strip()  # remove first task start token
+        outputs = processor.token2json(outputs)
+
+    if type(outputs) is dict:
+        for key, value in dict.values():
+            if type(value) is dict or type(list):
+                result.extend(postprocess_donut_funsd(value, processor))
+
+        if ("text" in outputs or "label" in outputs
+            or isinstance(outputs["text"], str) or isinstance(outputs["label"], str)
+            or outputs["text"] or outputs["label"]):
+            result.append({
+                "text": outputs["text"].strip(),
+                "label": outputs["label"].strip()
+            })
+    elif type(outputs) is list:
+        for output in outputs:
+            result.extend(postprocess_donut_funsd(output, processor))
 
     return result
 

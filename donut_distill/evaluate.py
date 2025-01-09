@@ -32,6 +32,7 @@ def evaluate(
         "precision": []
     }
 
+    model.eval()
     with torch.no_grad():
         for batch in tqdm(val_dataloader, desc="Validate"):
             pixel_values, decoder_input_ids, prompt_end_idxs, answers = batch
@@ -59,14 +60,12 @@ def evaluate(
                 generation_config=generation_config
             )
 
-            predictions = []
-            for seq in processor.tokenizer.batch_decode(outputs.sequences):
-                postprocess_donut_funsd(seq, processor)
-                predictions.append(seq)
+            predictions = processor.tokenizer.batch_decode(outputs.sequences)
 
             scores = []
             for pred, answer in zip(predictions, answers):
                 answer = postprocess_donut_funsd(answer, processor)
+                pred = postprocess_donut_funsd(pred, processor)
 
                 f1_score, recall, precision = calculate_metrics(answer, pred)
                 val_metrics["f1_score"].append(f1_score)
@@ -79,7 +78,11 @@ def evaluate(
                     print(f"\n\tAnswer: {answer}")
                     print(f"\n\tF1-Score: {f1_score}")
 
-    return np.mean(val_metrics["f1_score"]), np.mean(val_metrics["recall"]), np.mean(val_metrics["precision"])
+    val_metrics["f1_score"] = np.mean(val_metrics["f1_score"])
+    val_metrics["recall"] = np.mean(val_metrics["recall"])
+    val_metrics["precision"] = np.mean(val_metrics["precision"])
+
+    return val_metrics
 
 
 def test_generation_configs(model, processor, device, generationsconfigs: List[Tuple[str, GenerationConfig]]):
@@ -95,7 +98,7 @@ def test_generation_configs(model, processor, device, generationsconfigs: List[T
 
     val_dataloader = DataLoader(
         val_dataset,
-        batch_size=CONFIG.VAL_BATCH_SIZES,
+        batch_size=1,
         shuffle=False,
         num_workers=CONFIG.NUM_WORKERS,
     )
@@ -153,10 +156,74 @@ if __name__ == "__main__":
             top_k=50,
             top_p=0.95,
         )),
+        ("Contrastive search, alpha=0.6, k=4", GenerationConfig(
+            penalty_alpha=0.6, top_k=4,
+        )),
+        ("Contrastive search, alpha=0.8, k=4", GenerationConfig(
+            penalty_alpha=0.8, top_k=4,
+        )),
+        ("Contrastive search, alpha=0.6, k=8", GenerationConfig(
+            penalty_alpha=0.6, top_k=8,
+        )),
+        ("Contrastive search, alpha=0.6, k=10", GenerationConfig(
+            penalty_alpha=0.6, top_k=10,
+        )),
+        ("Contrastive search, alpha=0.6, k=4", GenerationConfig(
+            penalty_alpha=0.7, top_k=4,
+        )),
+        ("Nucleus K, p=0.95 k=40", GenerationConfig(
+            do_sample=True,
+            top_k=40,
+            top_p=0.95,
+        )),
+        ("Nucleus K, p=0.94 k=50", GenerationConfig(
+            do_sample=True,
+            top_k=50,
+            top_p=0.94,
+        )),
+        ("Nucleus K, p=0.93 k=40", GenerationConfig(
+            do_sample=True,
+            top_k=40,
+            top_p=0.93,
+        )),
+        ("Nucleus K, p=0.92 k=30", GenerationConfig(
+            do_sample=True,
+            top_k=30,
+            top_p=0.92,
+        )),
+        ("Greedy", GenerationConfig(
+        )),
+        ("Beam, num=5", GenerationConfig(
+            num_beams=5,
+            early_stopping=True
+        )),
+        ("Beam, num=3", GenerationConfig(
+            num_beams=3,
+            early_stopping=True
+        )),
+        ("Beam, num=7", GenerationConfig(
+            num_beams=7,
+            early_stopping=True
+        )),
+        ("Beam ngrams, num=5 ngrams=2", GenerationConfig(
+            num_beams=5,
+            no_repeat_ngram_size=2,
+            early_stopping=True,
+        )),
+        ("Beam ngrams, num=5 ngrams=4", GenerationConfig(
+            num_beams=5,
+            no_repeat_ngram_size=4,
+            early_stopping=True,
+        )),
+        ("Beam ngrams, num=5 ngrams=8", GenerationConfig(
+            num_beams=5,
+            no_repeat_ngram_size=8,
+            early_stopping=True,
+        )),
     ]
     import os
 
-    donut_path = "result/donut_20241208_143816"
+    donut_path = "result/donut_149"
     model_path = os.path.join(donut_path, "model")
     processor_path = os.path.join(donut_path, "processor")
     processor = DonutProcessor.from_pretrained(processor_path)

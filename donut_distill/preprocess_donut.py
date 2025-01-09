@@ -48,7 +48,7 @@ def preprocess_annotations_links(annotation_path):
     return {"form": qa_pairs}
 
 
-def preprocess_annotations_labels(annotation_path):
+def preprocess_annotations_labels(annotation_path, max_datapoints : int | None = None):
     with open(annotation_path, "r") as f:
         data = json.load(f)
 
@@ -66,7 +66,7 @@ def preprocess_annotations_labels(annotation_path):
 
 
 
-def preprocess_directory(directory_path, output_path, process_annotation_fn=preprocess_annotations_links):
+def preprocess_directory(directory_path, output_path, process_annotation_fn=preprocess_annotations_links, max_datapoints : int | None = None):
     # Create new directories and metadata file
     Path(output_path).mkdir(parents=True, exist_ok=True)
     metadata_file = open(path.join(output_path, "metadata.jsonl"), "w")
@@ -101,5 +101,8 @@ if __name__ == "__main__":
     test_directory = "dataset/testing_data"
     train_directory = "dataset/training_data"
     process_annotation_fn=preprocess_annotations_labels
-    preprocess_directory(test_directory, "preprocessed_dataset/test", process_annotation_fn)
-    preprocess_directory(train_directory, "preprocessed_dataset/train", process_annotation_fn)
+    # preprocess_directory(test_directory, "preprocessed_dataset/test", process_annotation_fn)
+    # preprocess_directory(train_directory, "preprocessed_dataset/train", process_annotation_fn)
+
+    preprocess_directory(train_directory, "preprocessed_dataset/test", process_annotation_fn, max_datapoints=5)
+    preprocess_directory(train_directory, "preprocessed_dataset/train", process_annotation_fn, max_datapoints=5)
