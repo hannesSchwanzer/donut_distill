@@ -79,7 +79,9 @@ def preprocess_directory(directory_path, output_path, process_annotation_fn=prep
         if path.isfile(path.join(image_directory, file))
     ]
 
-    for id in file_ids:
+    for i, id in enumerate(file_ids):
+        if max_datapoints and i >= max_datapoints:
+            break
         image_path = path.join(image_directory, f"{id}.png")
         annotation_path = path.join(annotation_directory, f"{id}.json")
 

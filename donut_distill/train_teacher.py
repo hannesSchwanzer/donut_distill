@@ -5,19 +5,17 @@ from transformers import (
 )
 from .donut_dataset import DonutDataset
 from torch.utils.data import DataLoader
-import re
-from nltk import edit_distance
 import numpy as np
 import torch
 import wandb
 from tqdm import tqdm
 from datetime import datetime
 from pathlib import Path
-from torch.nn.utils.rnn import pad_sequence
 import math
 from torch.optim.lr_scheduler import LambdaLR
 import donut_distill.config as CONFIG
-from donut_distill.evaluate import evaluate
+from donut_distill.evaluate import evaluate, evaluate_generation_configs
+from transformers import GenerationConfig
 
 TOKENIZERS_PARALLELISM = False
 
@@ -113,7 +111,7 @@ def train():
     # Logger
     wandb.init(
         project="donut-funsd",
-        name="train-torch",
+        name="5 datapoints",
         config={
             "learning_rate": CONFIG.LR,
             "architecture": "Donut",
@@ -162,28 +160,56 @@ def train():
 
         avg_train_loss = np.mean(losses)
 
-        eval_results = evaluate(
+        eval_results = evaluate_generation_configs(
             model=model,
             processor=processor,
             device=device,
             val_dataloader=val_dataloader,
+            generationsconfigs=[
+                ("Nucleus K, p=0.95 k=40", GenerationConfig(
+                    do_sample=True,
+                    top_k=40,
+                    top_p=0.95,
+                )),
+                ("Nucleus, p=0.94", GenerationConfig(
+                    do_sample=True,
+                    top_p=0.94,
+                    top_k=0
+                )),
+                ("Beam ngrams, num=5 ngrams=8", GenerationConfig(
+                    num_beams=5,
+                    no_repeat_ngram_size=8,
+                    early_stopping=True,
+                )),
+                ("Greedy", GenerationConfig(
+                )),
+            ]
         )
 
+        log_data = { "train/avg_loss": avg_train_loss }
+        for eval_result in eval_results:
+            log_data.update(eval_result)
+
         wandb.log(
-            {
-                "train/avg_loss": avg_train_loss,
-                "validate/f1": eval_results["f1"],
-                "validate/recall": eval_results["recall"],
-                "validate/precision": eval_results["precision"],
-            },
+            log_data,
             step=steps,
         )
 
-        if eval_results["f1"] < best_val_metric:
-            print("Saving Model!")
-            best_val_metric = eval_results["f1"]
-            model.save_pretrained(model_dir)
-            processor.save_pretrained(processor_dir)
+        # wandb.log(
+        #     {
+        #         "train/avg_loss": avg_train_loss,
+        #         "validate/f1": eval_results["f1"],
+        #         "validate/recall": eval_results["recall"],
+        #         "validate/precision": eval_results["precision"],
+        #     },
+        #     step=steps,
+        # )
+
+        # if eval_results["f1"] < best_val_metric:
+        #     print("Saving Model!")
+        #     best_val_metric = eval_results["f1"]
+        #     model.save_pretrained(model_dir)
+        #     processor.save_pretrained(processor_dir)
 
         scheduler.step()
 

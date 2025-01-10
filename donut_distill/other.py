@@ -53,24 +53,25 @@ def inference(
 def postprocess_donut_funsd(outputs: str | dict | list, processor: DonutProcessor) -> List[dict]:
     result = []
 
-    if type(outputs) is str:
+    if isinstance(outputs, str):
         outputs = outputs.replace(processor.tokenizer.eos_token, "").replace(processor.tokenizer.pad_token, "")
         # outputs = re.sub(r"<.*?>", "", outputs, count=1).strip()  # remove first task start token
         outputs = processor.token2json(outputs)
+        print(outputs)
 
-    if type(outputs) is dict:
-        for key, value in dict.values():
-            if type(value) is dict or type(list):
+    if isinstance(outputs, dict):  # Check if it's a dictionary
+        for key, value in outputs.items():
+            if isinstance(value, (dict, list)):
                 result.extend(postprocess_donut_funsd(value, processor))
 
-        if ("text" in outputs or "label" in outputs
-            or isinstance(outputs["text"], str) or isinstance(outputs["label"], str)
-            or outputs["text"] or outputs["label"]):
+        if ("text" in outputs and "label" in outputs
+            and isinstance(outputs["text"], str) and isinstance(outputs["label"], str)
+            and outputs["text"] and outputs["label"]):
             result.append({
                 "text": outputs["text"].strip(),
                 "label": outputs["label"].strip()
             })
-    elif type(outputs) is list:
+    elif isinstance(outputs, list):  # Check if it's a list
         for output in outputs:
             result.extend(postprocess_donut_funsd(output, processor))
 

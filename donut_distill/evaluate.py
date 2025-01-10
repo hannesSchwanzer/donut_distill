@@ -27,7 +27,7 @@ def evaluate(
         generation_config = GenerationConfig(early_stopping=True, num_beams=1)
 
     val_metrics = {
-        "f1_score": [],
+        "f1": [],
         "recall": [],
         "precision": []
     }
@@ -68,7 +68,7 @@ def evaluate(
                 pred = postprocess_donut_funsd(pred, processor)
 
                 f1_score, recall, precision = calculate_metrics(answer, pred)
-                val_metrics["f1_score"].append(f1_score)
+                val_metrics["f1"].append(f1_score)
                 val_metrics["recall"].append(recall)
                 val_metrics["precision"].append(precision)
 
@@ -78,33 +78,17 @@ def evaluate(
                     print(f"\n\tAnswer: {answer}")
                     print(f"\n\tF1-Score: {f1_score}")
 
-    val_metrics["f1_score"] = np.mean(val_metrics["f1_score"])
+    val_metrics["f1"] = np.mean(val_metrics["f1"])
     val_metrics["recall"] = np.mean(val_metrics["recall"])
     val_metrics["precision"] = np.mean(val_metrics["precision"])
 
     return val_metrics
 
 
-def test_generation_configs(model, processor, device, generationsconfigs: List[Tuple[str, GenerationConfig]]):
-    val_dataset = DonutDataset(
-        dataset_name_or_path="preprocessed_dataset",
-        processor=processor,
-        model=model,
-        max_length=CONFIG.MAX_LENGTH,
-        split="test",
-        task_start_token="<s_funsd>",
-        sort_json_key=False,  # cord dataset is preprocessed, so no need for this
-    )
-
-    val_dataloader = DataLoader(
-        val_dataset,
-        batch_size=1,
-        shuffle=False,
-        num_workers=CONFIG.NUM_WORKERS,
-    )
-
+def evaluate_generation_configs(model, processor, device, val_dataloader, generationsconfigs: List[Tuple[str, GenerationConfig]]):
+    results = list()
     for description, generation_config in generationsconfigs:
-        f1_score, recall, precision = evaluate(
+        result = evaluate(
             model=model,
             processor=processor,
             device = device,
@@ -112,9 +96,18 @@ def test_generation_configs(model, processor, device, generationsconfigs: List[T
             generation_config=generation_config,
         )
 
-        print(100*'-')
-        print(description)
-        print("\tF1-score:", f1_score)
+        results.append({
+            f"f1/{description}": result["f1"]
+        })
+
+        if CONFIG.VERBOSE:
+            print(100*'-')
+            print(description)
+            print("\tF1-score:", result["f1"])
+            print("\tRecall:", result["recall"])
+            print("\tPrecision:", result["precision"])
+
+    return results
 
 
 if __name__ == "__main__":
@@ -231,4 +224,4 @@ if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model.to(device)
 
-    test_generation_configs(model, processor, device, generation_configs)
+    evaluate_generation_configs(model, processor, device, generation_configs)
