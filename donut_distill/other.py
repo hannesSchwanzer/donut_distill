@@ -50,14 +50,15 @@ def inference(
     return decoded_output
 
 
-def postprocess_donut_funsd(outputs: str | dict | list, processor: DonutProcessor) -> List[dict]:
+def postprocess_donut_funsd(outputs: str | dict | list, processor: DonutProcessor, verbose: bool=False) -> List[dict]:
     result = []
 
     if isinstance(outputs, str):
         outputs = outputs.replace(processor.tokenizer.eos_token, "").replace(processor.tokenizer.pad_token, "")
         # outputs = re.sub(r"<.*?>", "", outputs, count=1).strip()  # remove first task start token
         outputs = processor.token2json(outputs)
-        print(outputs)
+        if verbose:
+            print(outputs)
 
     if isinstance(outputs, dict):  # Check if it's a dictionary
         for key, value in outputs.items():

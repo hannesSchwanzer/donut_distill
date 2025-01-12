@@ -106,5 +106,8 @@ if __name__ == "__main__":
     # preprocess_directory(test_directory, "preprocessed_dataset/test", process_annotation_fn)
     # preprocess_directory(train_directory, "preprocessed_dataset/train", process_annotation_fn)
 
-    preprocess_directory(train_directory, "preprocessed_dataset/test", process_annotation_fn, max_datapoints=5)
-    preprocess_directory(train_directory, "preprocessed_dataset/train", process_annotation_fn, max_datapoints=5)
+    # preprocess_directory(train_directory, "preprocessed_dataset/test", process_annotation_fn, max_datapoints=5)
+    # preprocess_directory(train_directory, "preprocessed_dataset/train", process_annotation_fn, max_datapoints=5)
+
+    preprocess_directory(train_directory, "preprocessed_dataset/test", process_annotation_fn)
+    preprocess_directory(train_directory, "preprocessed_dataset/train", process_annotation_fn)

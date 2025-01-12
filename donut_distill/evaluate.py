@@ -13,6 +13,7 @@ from donut_distill.metrics import calculate_metrics
 from transformers import GenerationConfig
 from donut_distill.other import postprocess_donut_funsd
 import numpy as np
+import itertools
 
 def evaluate(
     model: VisionEncoderDecoderModel,
@@ -31,10 +32,11 @@ def evaluate(
         "recall": [],
         "precision": []
     }
+    num_samples = len(val_dataloader.dataset) // 3
 
     model.eval()
     with torch.no_grad():
-        for batch in tqdm(val_dataloader, desc="Validate"):
+        for batch in tqdm(itertools.islice(val_dataloader, num_samples // val_dataloader.batch_size), desc="Validate"): #TODO: REMOVE
             pixel_values, decoder_input_ids, prompt_end_idxs, answers = batch
             pixel_values = pixel_values.to(device)
 
@@ -62,18 +64,19 @@ def evaluate(
 
             predictions = processor.tokenizer.batch_decode(outputs.sequences)
 
-            scores = []
             for pred, answer in zip(predictions, answers):
                 answer = postprocess_donut_funsd(answer, processor)
-                pred = postprocess_donut_funsd(pred, processor)
+                if CONFIG.VERBOSE:
+                    print("\n----------------------------------------\n")
+                    print("Prediction unverarbeitet:")
+                pred = postprocess_donut_funsd(pred, processor, verbose=CONFIG.VERBOSE)
 
                 f1_score, recall, precision = calculate_metrics(answer, pred)
                 val_metrics["f1"].append(f1_score)
                 val_metrics["recall"].append(recall)
                 val_metrics["precision"].append(precision)
 
-                if CONFIG.VERBOSE and len(scores) == 1:
-                    print("\n----------------------------------------\n")
+                if CONFIG.VERBOSE:
                     print(f"\nPrediction: {pred}")
                     print(f"\n\tAnswer: {answer}")
                     print(f"\n\tF1-Score: {f1_score}")
@@ -84,10 +87,53 @@ def evaluate(
 
     return val_metrics
 
+def evaluate_step(batch, batch_idx, processor, model, generation_config):
+    pixel_values, decoder_input_ids, prompt_end_idxs, answers = batch
+
+    decoder_prompts = pad_sequence(
+        [
+            input_id[: end_idx + 1]
+            for input_id, end_idx in zip(
+                decoder_input_ids, prompt_end_idxs
+            )
+        ],
+    )
+
+    outputs = model.generate(
+        pixel_values,
+        decoder_input_ids=decoder_prompts,
+        max_length=CONFIG.MAX_LENGTH,
+        pad_token_id=processor.tokenizer.pad_token_id,
+        eos_token_id=processor.tokenizer.eos_token_id,
+        use_cache=True,
+        bad_words_ids=[[processor.tokenizer.unk_token_id]],
+        return_dict_in_generate=True,
+        generation_config=generation_config
+    )
+
+    predictions = processor.tokenizer.batch_decode(outputs.sequences)
+
+    f1_scores = []
+    for pred, answer in zip(predictions, answers):
+        answer = postprocess_donut_funsd(answer, processor)
+        pred = postprocess_donut_funsd(pred, processor)
+
+        f1_score, recall, precision = calculate_metrics(answer, pred)
+        f1_scores.append(f1_score)
+        if CONFIG.VERBOSE:
+            print("\n----------------------------------------\n")
+            print(f"\nPrediction: {pred}")
+            print(f"\n\tAnswer: {answer}")
+            print(f"\n\tF1-Score: {f1_score}")
+
+    return f1_scores
 
 def evaluate_generation_configs(model, processor, device, val_dataloader, generationsconfigs: List[Tuple[str, GenerationConfig]]):
     results = list()
     for description, generation_config in generationsconfigs:
+        if CONFIG.VERBOSE:
+            print(f"------------------------{description}--------------------------------")
+
         result = evaluate(
             model=model,
             processor=processor,

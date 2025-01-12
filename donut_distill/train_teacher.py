@@ -3,7 +3,7 @@ from transformers import (
     VisionEncoderDecoderModel,
     VisionEncoderDecoderConfig,
 )
-from .donut_dataset import DonutDataset
+from donut_distill.donut_dataset import DonutDataset
 from torch.utils.data import DataLoader
 import numpy as np
 import torch
@@ -93,7 +93,7 @@ def train():
     # Optimizer and Scheduler
     optimizer = torch.optim.Adam(model.parameters(), lr=CONFIG.LR)
     if int(CONFIG.MAX_EPOCHS) > 0:
-        max_iter = (CONFIG.MAX_EPOCHS * CONFIG.NUM_TRAINING_SAMPLES_PER_EPOCH) / (
+        max_iter = (CONFIG.MAX_EPOCHS * len(train_dataloader.dataset)) / (
             CONFIG.TRAIN_BATCH_SIZES
             * torch.cuda.device_count()
             * CONFIG.NUM_NODES
@@ -154,8 +154,7 @@ def train():
             losses.append(loss.item())
 
             # Log training metrics
-            if steps % 10 == 0:
-                wandb.log({"train/loss": loss.item()}, step=steps)
+            wandb.log({"train/loss": loss.item()}, step=steps)
             steps += 1
 
         avg_train_loss = np.mean(losses)
