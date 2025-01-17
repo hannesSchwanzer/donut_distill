@@ -150,7 +150,7 @@ def train():
             )
             scaler.step(optimizer)
             scaler.update()
-            # optimizer.step()
+            scheduler.step()
             losses.append(loss.item())
 
             # Log training metrics
@@ -186,6 +186,9 @@ def train():
         )
 
         log_data = { "train/avg_loss": avg_train_loss }
+        log_data.update({"lr/optimizer": optimizer.param_groups[0]['lr']})
+        log_data.update({"lr/scheduler": scheduler.get_last_lr()[0]})
+        log_data.update({"epoch": epoch})
         for eval_result in eval_results:
             log_data.update(eval_result)
 
@@ -210,7 +213,6 @@ def train():
         #     model.save_pretrained(model_dir)
         #     processor.save_pretrained(processor_dir)
 
-        scheduler.step()
 
 
 if __name__ == "__main__":
