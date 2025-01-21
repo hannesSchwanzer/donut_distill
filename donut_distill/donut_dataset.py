@@ -158,7 +158,8 @@ class DonutDataset(Dataset):
         # rgb_image = Image.merge("RGB", (image, image, image))
         # inputs
         pixel_values = self.processor(
-            image, random_padding=self.split == "train", return_tensors="pt"
+            # image, random_padding=self.split == "train", return_tensors="pt"
+            image, random_padding=False, return_tensors="pt"
         ).pixel_values
         pixel_values = pixel_values.squeeze()
 

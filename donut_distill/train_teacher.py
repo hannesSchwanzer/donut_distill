@@ -55,6 +55,21 @@ def prepare_dataloader(model, processor):
 
     return train_dataloader, val_dataloader
 
+def prepare_model_and_processor():
+    donut_config = VisionEncoderDecoderConfig.from_pretrained(CONFIG.MODEL_ID)
+    donut_config.encoder.image_size = CONFIG.INPUT_SIZE
+    donut_config.decoder.max_length = CONFIG.MAX_LENGTH
+
+    processor = DonutProcessor.from_pretrained(CONFIG.MODEL_ID)
+    model = VisionEncoderDecoderModel.from_pretrained(
+        CONFIG.MODEL_ID, config=donut_config
+    )
+
+    processor.image_processor.size = CONFIG.INPUT_SIZE[::-1]
+    processor.image_processor.do_align_long_axis = False
+
+    return model, processor
+
 
 def cosine_scheduler(optimizer, training_steps, warmup_steps):
     def lr_lambda(current_step):
@@ -68,17 +83,7 @@ def cosine_scheduler(optimizer, training_steps, warmup_steps):
 
 
 def train():
-    donut_config = VisionEncoderDecoderConfig.from_pretrained(CONFIG.MODEL_ID)
-    donut_config.encoder.image_size = CONFIG.INPUT_SIZE
-    donut_config.decoder.max_length = CONFIG.MAX_LENGTH
-
-    processor = DonutProcessor.from_pretrained(CONFIG.MODEL_ID)
-    model = VisionEncoderDecoderModel.from_pretrained(
-        CONFIG.MODEL_ID, config=donut_config
-    )
-
-    processor.image_processor.size = CONFIG.INPUT_SIZE[::-1]
-    processor.image_processor.do_align_long_axis = False
+    model, processor = prepare_model_and_processor()
 
     train_dataloader, val_dataloader = prepare_dataloader(model, processor)
 
@@ -106,12 +111,12 @@ def train():
             else CONFIG.MAX_STEPS
         )
     assert max_iter is not None
-    scheduler = cosine_scheduler(optimizer, max_iter, CONFIG.WARMUP_STEPS)
+    # scheduler = cosine_scheduler(optimizer, max_iter, CONFIG.WARMUP_STEPS)
 
     # Logger
     wandb.init(
         project="donut-funsd",
-        name="5 datapoints",
+        name="self-labeled-dataset-without-scheduler",
         config={
             "learning_rate": CONFIG.LR,
             "architecture": "Donut",
@@ -150,7 +155,7 @@ def train():
             )
             scaler.step(optimizer)
             scaler.update()
-            scheduler.step()
+            # scheduler.step()
             losses.append(loss.item())
 
             # Log training metrics
@@ -159,38 +164,35 @@ def train():
 
         avg_train_loss = np.mean(losses)
 
-        eval_results = evaluate_generation_configs(
-            model=model,
-            processor=processor,
-            device=device,
-            val_dataloader=val_dataloader,
-            generationsconfigs=[
-                ("Nucleus K, p=0.95 k=40", GenerationConfig(
-                    do_sample=True,
-                    top_k=40,
-                    top_p=0.95,
-                )),
-                ("Nucleus, p=0.94", GenerationConfig(
-                    do_sample=True,
-                    top_p=0.94,
-                    top_k=0
-                )),
-                ("Beam ngrams, num=5 ngrams=8", GenerationConfig(
-                    num_beams=5,
-                    no_repeat_ngram_size=8,
-                    early_stopping=True,
-                )),
-                ("Greedy", GenerationConfig(
-                )),
-            ]
-        )
 
         log_data = { "train/avg_loss": avg_train_loss }
-        log_data.update({"lr/optimizer": optimizer.param_groups[0]['lr']})
-        log_data.update({"lr/scheduler": scheduler.get_last_lr()[0]})
+        log_data.update({"lr": optimizer.param_groups[0]['lr']})
         log_data.update({"epoch": epoch})
-        for eval_result in eval_results:
-            log_data.update(eval_result)
+
+        if epoch > CONFIG.SKIP_VALIDATION_FIRST_N_EPOCH % 3 == 0:
+            eval_results = evaluate_generation_configs(
+                model=model,
+                processor=processor,
+                device=device,
+                val_dataloader=val_dataloader,
+                generationsconfigs=[
+                    ("Beam ngrams, num=5", GenerationConfig(
+                        num_beams=5,
+                        early_stopping=True,
+                    )),
+                    ("Beam ngrams, num=5 ngrams=8", GenerationConfig(
+                        num_beams=5,
+                        no_repeat_ngram_size=8,
+                        early_stopping=True,
+                    )),
+                    ("Greedy", GenerationConfig(
+                    )),
+                ]
+            )
+
+            for eval_result in eval_results:
+                log_data.update(eval_result)
+
 
         wandb.log(
             log_data,

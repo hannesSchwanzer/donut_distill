@@ -32,11 +32,12 @@ def evaluate(
         "recall": [],
         "precision": []
     }
-    num_samples = len(val_dataloader.dataset) // 3
+    # num_samples = len(val_dataloader.dataset) // 3
 
     model.eval()
     with torch.no_grad():
-        for batch in tqdm(itertools.islice(val_dataloader, num_samples // val_dataloader.batch_size), desc="Validate"): #TODO: REMOVE
+        for batch in tqdm(val_dataloader, desc="Validate"):
+        # for batch in tqdm(itertools.islice(val_dataloader, num_samples // val_dataloader.batch_size), desc="Validate"): #TODO: REMOVE
             pixel_values, decoder_input_ids, prompt_end_idxs, answers = batch
             pixel_values = pixel_values.to(device)
 
