@@ -81,6 +81,8 @@ def evaluate(
                     print(f"\nPrediction: {pred}")
                     print(f"\n\tAnswer: {answer}")
                     print(f"\n\tF1-Score: {f1_score}")
+                    print(f"\n\tRecall: {recall}")
+                    print(f"\n\tPrecsion: {precision}")
 
     val_metrics["f1"] = np.mean(val_metrics["f1"])
     val_metrics["recall"] = np.mean(val_metrics["recall"])
@@ -144,7 +146,9 @@ def evaluate_generation_configs(model, processor, device, val_dataloader, genera
         )
 
         results.append({
-            f"f1/{description}": result["f1"]
+            f"f1/{description}": result["f1"],
+            f"recall/{description}": result["precision"],
+            f"recall/{description}": result["recall"]
         })
 
         if CONFIG.VERBOSE:

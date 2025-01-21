@@ -140,7 +140,7 @@ def train():
         model.train()
         losses = []
         for batch in tqdm(train_dataloader, desc=f"Training Epoch {epoch+1}"):
-            pixel_values, labels, answers = batch
+            pixel_values, labels = batch
             pixel_values = pixel_values.to(device)
             labels = labels.to(device)
 
@@ -169,7 +169,7 @@ def train():
         log_data.update({"lr": optimizer.param_groups[0]['lr']})
         log_data.update({"epoch": epoch})
 
-        if epoch > CONFIG.SKIP_VALIDATION_FIRST_N_EPOCH % 3 == 0:
+        if epoch > CONFIG.SKIP_VALIDATION_FIRST_N_EPOCH and epoch % 3 == 0:
             eval_results = evaluate_generation_configs(
                 model=model,
                 processor=processor,
