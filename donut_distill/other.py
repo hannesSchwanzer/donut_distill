@@ -78,3 +78,17 @@ def postprocess_donut_funsd(outputs: str | dict | list, processor: DonutProcesso
 
     return result
 
+
+def postprocess_donut_docvqa(outputs: str, processor: DonutProcessor, verbose: bool=False) -> str:
+
+    outputs = outputs.replace(processor.tokenizer.eos_token, "").replace(processor.tokenizer.pad_token, "")
+    # outputs = re.sub(r"<.*?>", "", outputs, count=1).strip()  # remove first task start token
+    outputs: dict = processor.token2json(outputs)
+    if verbose:
+        print(outputs)
+
+
+    return outputs.get("answer", "")
+
+
+

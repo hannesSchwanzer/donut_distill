@@ -1,15 +1,16 @@
 
 ''' transformer parameters '''
 MODEL_ID            = 'naver-clova-ix/donut-base'
-MAX_LENGTH          = 768
+# MAX_LENGTH          = 768     # funsd
+MAX_LENGTH          = 128  # docvqa
 RESUME_FROM_CHECKPOINT_PATH= None # only used for resume_from_checkpoint option in PL
 RESULT_PATH= "./result"
 PRETRAINED_MODEL_NAME_OR_PATH= "naver-clova-ix/donut-base" # loading a pre-trained model (from moldehub or path)
 # DATASET_TRAINING= "./preprocessed_dataset/train" # loading datasets (from moldehub or path)
 # DATASET_VALIDATE= "./preprocessed_dataset/test" # loading datasets (from moldehub or path)
-DATASET= "./dataset_labeled_human" # loading datasets (from moldehub or path)
+DATASET= "./preprocessed_dataset_docvqa/" # loading datasets (from moldehub or path)
 DATASET_NAME_TRAINING="train"
-DATASET_NAME_VALIDATE="test"
+DATASET_NAME_VALIDATE="val"
 SORT_JSON_KEY= False
 TRAIN_BATCH_SIZES= 3
 VAL_BATCH_SIZES=1

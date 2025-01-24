@@ -13,7 +13,7 @@ from pytorch_lightning.loggers import WandbLogger
 from lightning.pytorch.callbacks import LearningRateMonitor
 
 import donut_distill.config as CONFIG
-from donut_distill.evaluate import evaluate_step
+from donut_distill.evaluate import evaluate_step_funsd
 from donut_distill.train_teacher import prepare_dataloader
 
 TOKENIZERS_PARALLELISM = False
@@ -53,7 +53,7 @@ class DonutModelPLModule(pl.LightningModule):
         
         scores = dict()
         for i, (name, generation_config) in enumerate(self.generation_configs):
-            f1_scores = evaluate_step(
+            f1_scores = evaluate_step_funsd(
                 batch=batch,
                 batch_idx=batch_idx,
                 processor=self.processor,

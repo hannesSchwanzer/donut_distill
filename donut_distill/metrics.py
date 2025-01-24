@@ -1,4 +1,6 @@
-def calculate_metrics(ground_truth, predictions, strict=False):
+from nltk import edit_distance
+
+def calculate_metrics_funsd(ground_truth, predictions, strict=False):
     
     def funsd_result_to_dict(funsd_result):
         result = dict()
@@ -23,3 +25,11 @@ def calculate_metrics(ground_truth, predictions, strict=False):
 
     return f1_score, recall, precision
 
+def calculate_metrics_docvqa(ground_truth: str, predictions: str):
+    normed_edit_distance = edit_distance(predictions, ground_truth) / max(len(predictions), len(ground_truth))
+    exact_match = ground_truth == predictions
+
+    return {
+        "normed_edit_distance": normed_edit_distance,
+        "exact_match": exact_match
+    }

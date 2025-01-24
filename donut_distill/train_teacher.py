@@ -14,10 +14,19 @@ from pathlib import Path
 import math
 from torch.optim.lr_scheduler import LambdaLR
 import donut_distill.config as CONFIG
-from donut_distill.evaluate import evaluate, evaluate_generation_configs
+from donut_distill.evaluate import evaluate_funsd, evaluate_generation_configs_funsd
 from transformers import GenerationConfig
 
 TOKENIZERS_PARALLELISM = False
+
+# https://github.com/NielsRogge/Transformers-Tutorials/blob/master/Donut/DocVQA/Fine_tune_Donut_on_DocVQA.ipynb
+def add_tokens(model, processor, list_of_tokens: List[str]):
+    """
+    Add tokens to tokenizer and resize the token embeddings
+    """
+    newly_added_num = processor.tokenizer.add_tokens(list_of_tokens)
+    if newly_added_num > 0:
+        model.decoder.resize_token_embeddings(len(processor.tokenizer))
 
 def prepare_dataloader(model, processor):
     train_dataset = DonutDataset(
@@ -26,7 +35,8 @@ def prepare_dataloader(model, processor):
         model=model,
         max_length=CONFIG.MAX_LENGTH,
         split=CONFIG.DATASET_NAME_TRAINING,
-        task_start_token="<s_funsd>",
+        task_start_token=None,
+        prompt_end_token="<s_answer>",
         sort_json_key=False,  # cord dataset is preprocessed, so no need for this
     )
 
@@ -36,7 +46,8 @@ def prepare_dataloader(model, processor):
         model=model,
         max_length=CONFIG.MAX_LENGTH,
         split=CONFIG.DATASET_NAME_VALIDATE,
-        task_start_token="<s_funsd>",
+        task_start_token=None,
+        prompt_end_token="<s_answer>",
         sort_json_key=False,  # cord dataset is preprocessed, so no need for this
     )
 
@@ -85,12 +96,14 @@ def cosine_scheduler(optimizer, training_steps, warmup_steps):
 def train():
     model, processor = prepare_model_and_processor()
 
+    add_tokens(model, processor, ["<yes/>", "<no/>"])
+
     train_dataloader, val_dataloader = prepare_dataloader(model, processor)
 
     model.config.pad_token_id = processor.tokenizer.pad_token_id
-    model.config.decoder_start_token_id = processor.tokenizer.convert_tokens_to_ids(
-        [""]
-    )[0]
+    # model.config.decoder_start_token_id = processor.tokenizer.convert_tokens_to_ids(
+    #     [""]
+    # )[0]
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
@@ -140,12 +153,18 @@ def train():
         model.train()
         losses = []
         for batch in tqdm(train_dataloader, desc=f"Training Epoch {epoch+1}"):
-            pixel_values, labels = batch
-            pixel_values = pixel_values.to(device)
-            labels = labels.to(device)
+            # pixel_values, labels, target_sequence = batch
+            image_tensors, decoder_input_ids, decoder_labels = list(), list(), list()
+            for batch_data in batch:
+                image_tensors.append(batch_data[0])
+                decoder_input_ids.append(batch_data[1][:, :-1])
+                decoder_labels.append(batch_data[2][:, 1:])
+            image_tensors = torch.cat(image_tensors).to(device)
+            decoder_input_ids = torch.cat(decoder_input_ids).to(device)
+            decoder_labels = torch.cat(decoder_labels).to(device)
 
             with torch.autocast(device_type="cuda"):
-                outputs = model(pixel_values, labels=labels)
+                outputs = model(image_tensors, decoder_input_ids, decoder_labels)
                 loss = outputs.loss
             optimizer.zero_grad()
             # loss.backward()
@@ -170,7 +189,7 @@ def train():
         log_data.update({"epoch": epoch})
 
         if epoch > CONFIG.SKIP_VALIDATION_FIRST_N_EPOCH and epoch % 3 == 0:
-            eval_results = evaluate_generation_configs(
+            eval_results = evaluate_generation_configs_funsd(
                 model=model,
                 processor=processor,
                 device=device,
