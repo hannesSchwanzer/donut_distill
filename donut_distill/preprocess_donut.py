@@ -121,7 +121,7 @@ def preprocess_docvqa(annotations_path, images_path, output_path):
 
         for datapoint in tqdm(data, desc=dataset_split):
             image_path = path.join(images_path, datapoint["image"])
-            image_name = path.basename(images_path)
+            image_name = path.basename(image_path)
 
             question = datapoint["question"]
             answers = datapoint["answers"]

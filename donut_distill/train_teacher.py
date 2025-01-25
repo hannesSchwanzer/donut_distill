@@ -14,7 +14,7 @@ from pathlib import Path
 import math
 from torch.optim.lr_scheduler import LambdaLR
 import donut_distill.config as CONFIG
-from donut_distill.evaluate import evaluate_funsd, evaluate_generation_configs_funsd
+from donut_distill.evaluate import evaluate_funsd, evaluate_generation_configs_docvqa, evaluate_generation_configs_funsd
 from transformers import GenerationConfig
 
 TOKENIZERS_PARALLELISM = False
@@ -35,7 +35,7 @@ def prepare_dataloader(model, processor):
         model=model,
         max_length=CONFIG.MAX_LENGTH,
         split=CONFIG.DATASET_NAME_TRAINING,
-        task_start_token=None,
+        task_start_token="<s_docvqa>",
         prompt_end_token="<s_answer>",
         sort_json_key=False,  # cord dataset is preprocessed, so no need for this
     )
@@ -46,7 +46,7 @@ def prepare_dataloader(model, processor):
         model=model,
         max_length=CONFIG.MAX_LENGTH,
         split=CONFIG.DATASET_NAME_VALIDATE,
-        task_start_token=None,
+        task_start_token="<s_docvqa>",
         prompt_end_token="<s_answer>",
         sort_json_key=False,  # cord dataset is preprocessed, so no need for this
     )
@@ -153,18 +153,15 @@ def train():
         model.train()
         losses = []
         for batch in tqdm(train_dataloader, desc=f"Training Epoch {epoch+1}"):
-            # pixel_values, labels, target_sequence = batch
-            image_tensors, decoder_input_ids, decoder_labels = list(), list(), list()
-            for batch_data in batch:
-                image_tensors.append(batch_data[0])
-                decoder_input_ids.append(batch_data[1][:, :-1])
-                decoder_labels.append(batch_data[2][:, 1:])
-            image_tensors = torch.cat(image_tensors).to(device)
-            decoder_input_ids = torch.cat(decoder_input_ids).to(device)
-            decoder_labels = torch.cat(decoder_labels).to(device)
+            pixel_values, decoder_input_ids, labels = batch
+            pixel_values = pixel_values.to(device)
+            decoder_input_ids = decoder_input_ids[:, :-1].to(device)
+            labels = labels[:, 1:].to(device)
 
             with torch.autocast(device_type="cuda"):
-                outputs = model(image_tensors, decoder_input_ids, decoder_labels)
+                outputs = model(pixel_values,
+                             decoder_input_ids=decoder_input_ids,
+                             labels=labels)
                 loss = outputs.loss
             optimizer.zero_grad()
             # loss.backward()
@@ -189,7 +186,7 @@ def train():
         log_data.update({"epoch": epoch})
 
         if epoch > CONFIG.SKIP_VALIDATION_FIRST_N_EPOCH and epoch % 3 == 0:
-            eval_results = evaluate_generation_configs_funsd(
+            eval_results = evaluate_generation_configs_docvqa(
                 model=model,
                 processor=processor,
                 device=device,

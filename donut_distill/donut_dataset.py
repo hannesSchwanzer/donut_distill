@@ -181,8 +181,8 @@ class DonutDataset(Dataset):
             labels[labels == self.processor.tokenizer.pad_token_id] = (
                 self.ignore_id
             )  # model doesn't need to predict pad token
-            # labels[: torch.nonzero(labels == self.prompt_end_token_id).sum() + 1] = self.ignore_id  # model doesn't need to predict prompt (for VQA)
-            return pixel_values, labels, target_sequence
+            labels[: torch.nonzero(labels == self.prompt_end_token_id).sum() + 1] = self.ignore_id  # model doesn't need to predict prompt (for VQA)
+            return pixel_values, input_ids, labels
         else:
             prompt_end_index = torch.nonzero(
                 input_ids == self.prompt_end_token_id

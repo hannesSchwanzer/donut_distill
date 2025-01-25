@@ -54,10 +54,11 @@ def evaluate_docvqa(
             predictions = processor.tokenizer.batch_decode(outputs.sequences)
 
             for pred, answer in zip(predictions, answers):
-                answer = postprocess_donut_docvqa(answer, processor)
                 if CONFIG.VERBOSE:
                     print("\n----------------------------------------\n")
-                    print("Prediction unverarbeitet:")
+                    print("answer unverarbeitet:", answer)
+                    print("Prediction unverarbeitet:", pred)
+                answer = postprocess_donut_docvqa(answer, processor)
                 pred = postprocess_donut_docvqa(pred, processor, verbose=CONFIG.VERBOSE)
 
                 metric = calculate_metrics_docvqa(answer, pred)
@@ -67,12 +68,12 @@ def evaluate_docvqa(
                 if CONFIG.VERBOSE:
                     print(f"\nPrediction: {pred}")
                     print(f"\n\tAnswer: {answer}")
-                    print(f"\texact_match: {metric["exact_match"]}")
-                    print(f"\tnormed_edit_distance: {metric["normed_edit_distance"]}")
+                    print(f"\texact_match: {metric['exact_match']}")
+                    print(f"\tnormed_edit_distance: {metric['normed_edit_distance']}")
 
     return {
         "accuracy": np.mean(val_metrics["exact_match"]),
-        "avg_normed_edit_distance": np.mean(metric["normed_edit_distance"])
+        "avg_normed_edit_distance": np.mean(val_metrics["normed_edit_distance"])
     }
 
 
