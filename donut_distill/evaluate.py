@@ -7,13 +7,12 @@ from transformers import (
     VisionEncoderDecoderModel,
 )
 from torch.nn.utils.rnn import pad_sequence
-import config as CONFIG
+import donut_distill.config as CONFIG
 from donut_distill.donut_dataset import DonutDataset
 from donut_distill.metrics import calculate_metrics_docvqa, calculate_metrics_funsd
 from transformers import GenerationConfig
 from donut_distill.other import postprocess_donut_docvqa, postprocess_donut_funsd
 import numpy as np
-import itertools
 
 
 def evaluate_docvqa(
@@ -64,16 +63,19 @@ def evaluate_docvqa(
                 metric = calculate_metrics_docvqa(answer, pred)
                 val_metrics["normed_edit_distance"].append(metric["normed_edit_distance"])
                 val_metrics["exact_match"].append(metric["exact_match"])
+                val_metrics["substring_match"].append(metric["substring_match"])
 
                 if CONFIG.VERBOSE:
                     print(f"\nPrediction: {pred}")
                     print(f"\n\tAnswer: {answer}")
                     print(f"\texact_match: {metric['exact_match']}")
                     print(f"\tnormed_edit_distance: {metric['normed_edit_distance']}")
+                    print(f"\tsubstring_match: {metric['substring_match']}")
 
     return {
         "accuracy": np.mean(val_metrics["exact_match"]),
-        "avg_normed_edit_distance": np.mean(val_metrics["normed_edit_distance"])
+        "avg_normed_edit_distance": np.mean(val_metrics["normed_edit_distance"]),
+        "substring_match_accuracy": np.mean(val_metrics["substring_match"])
     }
 
 

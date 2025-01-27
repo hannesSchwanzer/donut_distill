@@ -83,12 +83,12 @@ def postprocess_donut_docvqa(outputs: str, processor: DonutProcessor, verbose: b
 
     outputs = outputs.replace(processor.tokenizer.eos_token, "").replace(processor.tokenizer.pad_token, "")
     # outputs = re.sub(r"<.*?>", "", outputs, count=1).strip()  # remove first task start token
-    outputs: dict = processor.token2json(outputs)
+    outputs_json: Dict[str, str] = processor.token2json(outputs)
     if verbose:
-        print(outputs)
+        print(outputs_json)
 
 
-    return outputs.get("answer", "")
+    return outputs_json.get("answer", "").lower()
 
 
 

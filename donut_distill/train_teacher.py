@@ -14,8 +14,9 @@ from pathlib import Path
 import math
 from torch.optim.lr_scheduler import LambdaLR
 import donut_distill.config as CONFIG
-from donut_distill.evaluate import evaluate_funsd, evaluate_generation_configs_docvqa, evaluate_generation_configs_funsd
+from donut_distill.evaluate import evaluate_docvqa, evaluate_funsd, evaluate_generation_configs_docvqa, evaluate_generation_configs_funsd
 from transformers import GenerationConfig
+from typing import List
 
 TOKENIZERS_PARALLELISM = False
 
@@ -124,12 +125,12 @@ def train():
             else CONFIG.MAX_STEPS
         )
     assert max_iter is not None
-    # scheduler = cosine_scheduler(optimizer, max_iter, CONFIG.WARMUP_STEPS)
+    scheduler = cosine_scheduler(optimizer, max_iter, CONFIG.WARMUP_STEPS)
 
     # Logger
     wandb.init(
         project="donut-funsd",
-        name="self-labeled-dataset-without-scheduler",
+        name="docvqa",
         config={
             "learning_rate": CONFIG.LR,
             "architecture": "Donut",
@@ -171,7 +172,7 @@ def train():
             )
             scaler.step(optimizer)
             scaler.update()
-            # scheduler.step()
+            scheduler.step()
             losses.append(loss.item())
 
             # Log training metrics
@@ -185,30 +186,46 @@ def train():
         log_data.update({"lr": optimizer.param_groups[0]['lr']})
         log_data.update({"epoch": epoch})
 
-        if epoch > CONFIG.SKIP_VALIDATION_FIRST_N_EPOCH and epoch % 3 == 0:
-            eval_results = evaluate_generation_configs_docvqa(
+        if epoch >= CONFIG.SKIP_VALIDATION_FIRST_N_EPOCH and epoch % CONFIG.VALIDATE_EVERY_N_EPOCH == 0:
+            # eval_results = evaluate_generation_configs_docvqa(
+            #     model=model,
+            #     processor=processor,
+            #     device=device,
+            #     val_dataloader=val_dataloader,
+            #     generationsconfigs=[
+            #         ("Beam ngrams, num=5", GenerationConfig(
+            #             num_beams=5,
+            #             early_stopping=True,
+            #         )),
+            #         ("Beam ngrams, num=5 ngrams=8", GenerationConfig(
+            #             num_beams=5,
+            #             no_repeat_ngram_size=8,
+            #             early_stopping=True,
+            #         )),
+            #         ("Greedy", GenerationConfig(
+            #         )),
+            #     ]
+            # )
+            #
+            # for eval_result in eval_results:
+            #     log_data.update(eval_result)
+
+            eval_results = evaluate_docvqa(
                 model=model,
                 processor=processor,
                 device=device,
                 val_dataloader=val_dataloader,
-                generationsconfigs=[
-                    ("Beam ngrams, num=5", GenerationConfig(
-                        num_beams=5,
-                        early_stopping=True,
-                    )),
-                    ("Beam ngrams, num=5 ngrams=8", GenerationConfig(
-                        num_beams=5,
-                        no_repeat_ngram_size=8,
-                        early_stopping=True,
-                    )),
-                    ("Greedy", GenerationConfig(
-                    )),
-                ]
+                generation_config=GenerationConfig(
+                    early_stopping=True,
+                    num_beams=1,
+                ),
             )
-
-            for eval_result in eval_results:
-                log_data.update(eval_result)
-
+            log_data.update(eval_results)
+            if best_val_metric > eval_results["avg_normed_edit_distance"]:
+                print("Saving Model!")
+                best_val_metric = eval_results["avg_normed_edit_distance"]
+                model.save_pretrained(model_dir)
+                processor.save_pretrained(processor_dir)
 
         wandb.log(
             log_data,

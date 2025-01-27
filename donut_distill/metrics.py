@@ -25,11 +25,13 @@ def calculate_metrics_funsd(ground_truth, predictions, strict=False):
 
     return f1_score, recall, precision
 
-def calculate_metrics_docvqa(ground_truth: str, predictions: str):
-    normed_edit_distance = edit_distance(predictions, ground_truth) / max(len(predictions), len(ground_truth))
-    exact_match = ground_truth == predictions
+def calculate_metrics_docvqa(ground_truth: str, prediction: str):
+    normed_edit_distance = edit_distance(prediction, ground_truth) / max(len(prediction), len(ground_truth))
+    exact_match = ground_truth == prediction
+    substring_match = ground_truth in prediction or prediction in ground_truth
 
     return {
         "normed_edit_distance": normed_edit_distance,
-        "exact_match": exact_match
+        "exact_match": exact_match,
+        "substring_match": substring_match,
     }
