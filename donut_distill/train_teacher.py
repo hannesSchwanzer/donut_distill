@@ -38,7 +38,7 @@ def prepare_dataloader(model, processor):
         split=CONFIG.DATASET_NAME_TRAINING,
         task_start_token="<s_docvqa>",
         prompt_end_token="<s_answer>",
-        sort_json_key=False,  # cord dataset is preprocessed, so no need for this
+        sort_json_key=CONFIG.SORT_JSON_KEY,  # cord dataset is preprocessed, so no need for this
     )
 
     val_dataset = DonutDataset(
@@ -49,7 +49,7 @@ def prepare_dataloader(model, processor):
         split=CONFIG.DATASET_NAME_VALIDATE,
         task_start_token="<s_docvqa>",
         prompt_end_token="<s_answer>",
-        sort_json_key=False,  # cord dataset is preprocessed, so no need for this
+        sort_json_key=CONFIG.SORT_JSON_KEY,  # cord dataset is preprocessed, so no need for this
     )
 
     train_dataloader = DataLoader(
@@ -152,8 +152,8 @@ def train():
     for epoch in range(CONFIG.MAX_EPOCHS):
         # Training phase
         model.train()
-        losses = []
-        for batch in tqdm(train_dataloader, desc=f"Training Epoch {epoch+1}"):
+        total_loss = 0
+        for i, batch in enumerate(tqdm(train_dataloader, desc=f"Training Epoch {epoch+1}")):
             pixel_values, decoder_input_ids, labels = batch
             pixel_values = pixel_values.to(device)
             decoder_input_ids = decoder_input_ids[:, :-1].to(device)
@@ -164,22 +164,31 @@ def train():
                              decoder_input_ids=decoder_input_ids,
                              labels=labels)
                 loss = outputs.loss
-            optimizer.zero_grad()
-            # loss.backward()
+
             scaler.scale(loss).backward()
-            torch.nn.utils.clip_grad_norm_(
-                model.parameters(), CONFIG.GRADIENT_CLIP_VAL
-            )
-            scaler.step(optimizer)
-            scaler.update()
-            scheduler.step()
-            losses.append(loss.item())
+
+            if (i + 1) % CONFIG.ACCUMULATION_STEPS == 0:
+                torch.nn.utils.clip_grad_norm_(
+                    model.parameters(), CONFIG.GRADIENT_CLIP_VAL
+                )
+                scaler.step(optimizer)
+                scaler.update()
+                optimizer.zero_grad()
+                scheduler.step()
+
 
             # Log training metrics
-            wandb.log({"train/loss": loss.item()}, step=steps)
+            if steps % CONFIG.LOG_INTERVAL == 0:
+                wandb.log({
+                    "train/loss": loss.item(),
+                    "gpu/memory_allocated": torch.cuda.memory_allocated(),
+                    "gpu/memory_reserved": torch.cuda.memory_reserved()
+                }, step=steps)
+
+            total_loss += loss.item()
             steps += 1
 
-        avg_train_loss = np.mean(losses)
+        avg_train_loss = total_loss / len(train_dataloader)
 
 
         log_data = { "train/avg_loss": avg_train_loss }
@@ -187,39 +196,18 @@ def train():
         log_data.update({"epoch": epoch})
 
         if epoch >= CONFIG.SKIP_VALIDATION_FIRST_N_EPOCH and epoch % CONFIG.VALIDATE_EVERY_N_EPOCH == 0:
-            # eval_results = evaluate_generation_configs_docvqa(
-            #     model=model,
-            #     processor=processor,
-            #     device=device,
-            #     val_dataloader=val_dataloader,
-            #     generationsconfigs=[
-            #         ("Beam ngrams, num=5", GenerationConfig(
-            #             num_beams=5,
-            #             early_stopping=True,
-            #         )),
-            #         ("Beam ngrams, num=5 ngrams=8", GenerationConfig(
-            #             num_beams=5,
-            #             no_repeat_ngram_size=8,
-            #             early_stopping=True,
-            #         )),
-            #         ("Greedy", GenerationConfig(
-            #         )),
-            #     ]
-            # )
-            #
-            # for eval_result in eval_results:
-            #     log_data.update(eval_result)
 
-            eval_results = evaluate_docvqa(
-                model=model,
-                processor=processor,
-                device=device,
-                val_dataloader=val_dataloader,
-                generation_config=GenerationConfig(
-                    early_stopping=True,
-                    num_beams=1,
-                ),
-            )
+            with torch.autocast(device_type="cuda"):
+                eval_results = evaluate_docvqa(
+                    model=model,
+                    processor=processor,
+                    device=device,
+                    val_dataloader=val_dataloader,
+                    generation_config=GenerationConfig(
+                        early_stopping=True,
+                        num_beams=1,
+                    ),
+                )
             log_data.update(eval_results)
             if best_val_metric > eval_results["avg_normed_edit_distance"]:
                 print("Saving Model!")
@@ -232,21 +220,7 @@ def train():
             step=steps,
         )
 
-        # wandb.log(
-        #     {
-        #         "train/avg_loss": avg_train_loss,
-        #         "validate/f1": eval_results["f1"],
-        #         "validate/recall": eval_results["recall"],
-        #         "validate/precision": eval_results["precision"],
-        #     },
-        #     step=steps,
-        # )
-
-        # if eval_results["f1"] < best_val_metric:
-        #     print("Saving Model!")
-        #     best_val_metric = eval_results["f1"]
-        #     model.save_pretrained(model_dir)
-        #     processor.save_pretrained(processor_dir)
+        torch.cuda.empty_cache()
 
 
 

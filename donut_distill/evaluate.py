@@ -22,7 +22,7 @@ def evaluate_docvqa(
     val_dataloader: DataLoader,
     generation_config: Optional[GenerationConfig],
 ):
-    val_metrics = {"normed_edit_distance": [], "exact_match": []}
+    val_metrics = {"normed_edit_distance": [], "exact_match": [], "substring_match": []}
 
     model.eval()
     with torch.no_grad():
@@ -54,7 +54,7 @@ def evaluate_docvqa(
 
             for pred, answer in zip(predictions, answers):
                 if CONFIG.VERBOSE:
-                    print("\n----------------------------------------\n")
+                    print("\n----------------------------------------")
                     print("answer unverarbeitet:", answer)
                     print("Prediction unverarbeitet:", pred)
                 answer = postprocess_donut_docvqa(answer, processor)
@@ -66,8 +66,8 @@ def evaluate_docvqa(
                 val_metrics["substring_match"].append(metric["substring_match"])
 
                 if CONFIG.VERBOSE:
-                    print(f"\nPrediction: {pred}")
-                    print(f"\n\tAnswer: {answer}")
+                    print(f"Prediction: {pred}")
+                    print(f"\tAnswer: {answer}")
                     print(f"\texact_match: {metric['exact_match']}")
                     print(f"\tnormed_edit_distance: {metric['normed_edit_distance']}")
                     print(f"\tsubstring_match: {metric['substring_match']}")
