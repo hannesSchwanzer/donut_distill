@@ -17,6 +17,7 @@ import donut_distill.config as CONFIG
 from donut_distill.evaluate import evaluate_docvqa, evaluate_funsd, evaluate_generation_configs_docvqa, evaluate_generation_configs_funsd
 from transformers import GenerationConfig
 from typing import List
+import time
 
 TOKENIZERS_PARALLELISM = False
 
@@ -186,34 +187,46 @@ def train():
                 }, step=steps)
 
             total_loss += loss.item()
+
+            if steps % CONFIG.VALIDATE_EVERY_N_BATCHES == 0:
+                model.eval()
+                torch.cuda.empty_cache()
+
+                start_time = time.time()
+                with torch.autocast(device_type="cuda"):
+                    eval_results = evaluate_docvqa(
+                        model=model,
+                        processor=processor,
+                        device=device,
+                        val_dataloader=val_dataloader,
+                        generation_config=GenerationConfig(
+                            early_stopping=True,
+                            num_beams=1,
+                        ),
+                    )
+                evaluation_time = time.time() - start_time
+                eval_results.update({"eval/time": evaluation_time})
+
+                wandb.log(
+                    eval_results,
+                    step=steps,
+                )
+
+                if best_val_metric > eval_results["avg_normed_edit_distance"]:
+                    print("Saving Model!")
+                    best_val_metric = eval_results["avg_normed_edit_distance"]
+                    model.save_pretrained(model_dir)
+                    processor.save_pretrained(processor_dir)
+
+                    torch.cuda.empty_cache()
+
             steps += 1
 
         avg_train_loss = total_loss / len(train_dataloader)
 
-
         log_data = { "train/avg_loss": avg_train_loss }
         log_data.update({"lr": optimizer.param_groups[0]['lr']})
         log_data.update({"epoch": epoch})
-
-        if epoch >= CONFIG.SKIP_VALIDATION_FIRST_N_EPOCH and epoch % CONFIG.VALIDATE_EVERY_N_EPOCH == 0:
-
-            with torch.autocast(device_type="cuda"):
-                eval_results = evaluate_docvqa(
-                    model=model,
-                    processor=processor,
-                    device=device,
-                    val_dataloader=val_dataloader,
-                    generation_config=GenerationConfig(
-                        early_stopping=True,
-                        num_beams=1,
-                    ),
-                )
-            log_data.update(eval_results)
-            if best_val_metric > eval_results["avg_normed_edit_distance"]:
-                print("Saving Model!")
-                best_val_metric = eval_results["avg_normed_edit_distance"]
-                model.save_pretrained(model_dir)
-                processor.save_pretrained(processor_dir)
 
         wandb.log(
             log_data,

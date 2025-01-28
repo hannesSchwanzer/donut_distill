@@ -73,9 +73,9 @@ def evaluate_docvqa(
                     print(f"\tsubstring_match: {metric['substring_match']}")
 
     return {
-        "accuracy": np.mean(val_metrics["exact_match"]),
-        "avg_normed_edit_distance": np.mean(val_metrics["normed_edit_distance"]),
-        "substring_match_accuracy": np.mean(val_metrics["substring_match"])
+        "eval/accuracy": np.mean(val_metrics["exact_match"]),
+        "eval/avg_normed_edit_distance": np.mean(val_metrics["normed_edit_distance"]),
+        "eval/substring_match_accuracy": np.mean(val_metrics["substring_match"])
     }
 
 
