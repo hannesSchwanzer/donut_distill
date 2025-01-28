@@ -183,10 +183,12 @@ def train():
                 wandb.log({
                     "train/loss": loss.item(),
                     "gpu/memory_allocated": torch.cuda.memory_allocated(),
-                    "gpu/memory_reserved": torch.cuda.memory_reserved()
+                    "gpu/memory_reserved": torch.cuda.memory_reserved(),
+                    "lr": optimizer.param_groups[0]['lr'],
                 }, step=steps)
 
             total_loss += loss.item()
+            steps += 1
 
             if steps % CONFIG.VALIDATE_EVERY_N_BATCHES == 0:
                 model.eval()
@@ -220,12 +222,10 @@ def train():
 
                     torch.cuda.empty_cache()
 
-            steps += 1
 
         avg_train_loss = total_loss / len(train_dataloader)
 
         log_data = { "train/avg_loss": avg_train_loss }
-        log_data.update({"lr": optimizer.param_groups[0]['lr']})
         log_data.update({"epoch": epoch})
 
         wandb.log(
