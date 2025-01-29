@@ -9,6 +9,28 @@ from PIL import Image
 
 # https://github.com/NielsRogge/Transformers-Tutorials/blob/master/Donut/CORD/Fine_tune_Donut_on_a_custom_dataset_(CORD)_with_PyTorch_Lightning.ipynb
 added_tokens = []
+pad_token_id = "0"
+
+def collate_fn_docvqaeval(batch):
+    if len(batch[0]) == 4:
+        pixel_values, input_ids, prompt_end_idxs, target_sequences = zip(*batch)
+
+        # Stack pixel_values and input_ids into tensors
+        pixel_values = torch.stack(pixel_values)
+        input_ids = torch.stack(input_ids)
+        prompt_end_idxs = torch.tensor(prompt_end_idxs)
+
+        # Ensure target_sequences are always lists (for ANLS computation)
+        processed_targets = []
+        for target in target_sequences:
+            if isinstance(target, str):
+                processed_targets.append([target])  # Wrap single GT in a list
+            else:
+                processed_targets.append(target)  # Already a list of multiple GTs
+
+        return pixel_values, input_ids, prompt_end_idxs, processed_targets
+    else: 
+        raise Exception()
 
 
 class DonutDataset(Dataset):
@@ -39,7 +61,7 @@ class DonutDataset(Dataset):
         task_start_token: str = "",
         prompt_end_token: str = None,
         sort_json_key: bool = True,
-        multiple_answers: bool = False,
+        task: str = "",
     ):
         super().__init__()
 
@@ -53,7 +75,7 @@ class DonutDataset(Dataset):
             prompt_end_token if prompt_end_token else task_start_token
         )
         self.sort_json_key = sort_json_key
-        self.multiple_answers = multiple_answers
+        self.task = task
 
         self.dataset = load_dataset(dataset_name_or_path, split=self.split)
         self.dataset_length = len(self.dataset)
@@ -88,6 +110,7 @@ class DonutDataset(Dataset):
         self.prompt_end_token_id = self.processor.tokenizer.convert_tokens_to_ids(
             self.prompt_end_token
         )
+
 
     def json2token(
         self,
@@ -189,7 +212,7 @@ class DonutDataset(Dataset):
             prompt_end_index = torch.nonzero(
                 input_ids == self.prompt_end_token_id
             ).sum()  # return prompt end index instead of target output labels
-            if self.mupltiple_answers:
+            if self.task == 'docvqa':
                 return pixel_values, input_ids, prompt_end_index, self.gt_token_sequences[idx]
             else:
                 return pixel_values, input_ids, prompt_end_index, target_sequence

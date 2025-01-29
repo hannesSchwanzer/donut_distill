@@ -53,10 +53,6 @@ def evaluate_docvqa(
             predictions = processor.tokenizer.batch_decode(outputs.sequences)
 
             for pred, answers in zip(predictions, answers_list):
-
-                if isinstance(answers, str):
-                    answers = [answers]  # Single ground truth case
-                
                 if CONFIG.VERBOSE:
                     print("\n----------------------------------------")
                     print("Prediction unverarbeitet:", pred)

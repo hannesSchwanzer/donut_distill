@@ -3,9 +3,8 @@ from transformers import (
     VisionEncoderDecoderModel,
     VisionEncoderDecoderConfig,
 )
-from donut_distill.donut_dataset import DonutDataset
+from donut_distill.donut_dataset import DonutDataset, collate_fn_docvqa
 from torch.utils.data import DataLoader
-import numpy as np
 import torch
 import wandb
 from tqdm import tqdm
@@ -40,7 +39,7 @@ def prepare_dataloader(model, processor):
         task_start_token="<s_docvqa>",
         prompt_end_token="<s_answer>",
         sort_json_key=CONFIG.SORT_JSON_KEY,  # cord dataset is preprocessed, so no need for this
-        multiple_answers=True,
+        task="docvqa",
     )
 
     val_dataset = DonutDataset(
@@ -52,7 +51,7 @@ def prepare_dataloader(model, processor):
         task_start_token="<s_docvqa>",
         prompt_end_token="<s_answer>",
         sort_json_key=CONFIG.SORT_JSON_KEY,  # cord dataset is preprocessed, so no need for this
-        multiple_answers=True,
+        task="docvqa",
     )
 
     train_dataloader = DataLoader(
@@ -66,6 +65,7 @@ def prepare_dataloader(model, processor):
         batch_size=CONFIG.VAL_BATCH_SIZES,
         shuffle=False,
         num_workers=CONFIG.NUM_WORKERS,
+        collate_fn=collate_fn_docvqa,
     )
 
     return train_dataloader, val_dataloader
