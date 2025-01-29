@@ -22,22 +22,26 @@ def evaluate_docvqa(
     val_dataloader: DataLoader,
     generation_config: Optional[GenerationConfig],
 ):
-    val_metrics = {"normed_edit_distance": [], "exact_match": [], "substring_match": []}
+    val_metrics = {"exact_match": [], "anls": []}
 
     model.eval()
     with torch.no_grad():
         for batch in tqdm(val_dataloader, desc="Validate"):
-            pixel_values, decoder_input_ids, prompt_end_idxs, answers = batch
-            pixel_values = pixel_values.to(device)
+            pixel_values, decoder_input_ids_list, prompt_end_idxs_list, answers_list = batch
+            pixel_values = pixel_values.to(device)  # (batch_size, channels, height, width)
 
+            batch_size = pixel_values.shape[0]
+
+            # **Decoder prompts remain the same across all answers per item**
             decoder_prompts = pad_sequence(
                 [
-                    input_id[: end_idx + 1]
-                    for input_id, end_idx in zip(decoder_input_ids, prompt_end_idxs)
+                    input_ids[0][: prompt_end_idx[0] + 1]
+                    for input_ids, prompt_end_idx in zip(decoder_input_ids_list, prompt_end_idxs_list)
                 ],
                 batch_first=True,
-            ).to(device)
+            ).to(device)  # Shape: (batch_size, seq_length)
 
+            # **Generate all predictions at once**
             outputs = model.generate(
                 pixel_values,
                 decoder_input_ids=decoder_prompts,
@@ -50,32 +54,35 @@ def evaluate_docvqa(
                 generation_config=generation_config,
             )
 
-            predictions = processor.tokenizer.batch_decode(outputs.sequences)
+            # **Decode predictions**
+            predictions = processor.tokenizer.batch_decode(outputs.sequences, skip_special_tokens=True)
 
-            for pred, answer in zip(predictions, answers):
+            # **Compare each prediction with all possible answers**
+            for pred, answers in zip(predictions, answers_list):
                 if CONFIG.VERBOSE:
                     print("\n----------------------------------------")
-                    print("answer unverarbeitet:", answer)
+                    print("Answers unverarbeitet:", answers)
                     print("Prediction unverarbeitet:", pred)
-                answer = postprocess_donut_docvqa(answer, processor)
-                pred = postprocess_donut_docvqa(pred, processor, verbose=CONFIG.VERBOSE)
 
-                metric = calculate_metrics_docvqa(answer, pred)
-                val_metrics["normed_edit_distance"].append(metric["normed_edit_distance"])
+                pred = postprocess_donut_docvqa(pred, processor, verbose=CONFIG.VERBOSE)
+                answers = [postprocess_donut_docvqa(ans, processor) for ans in answers]
+
+                # **Pass all answers at once to calculate_metrics**
+                metric = calculate_metrics_docvqa(answers, pred)  # Now takes a list of answers
+
+                # **Store metrics**
+                val_metrics["anls"].append(metric["anls"])
                 val_metrics["exact_match"].append(metric["exact_match"])
-                val_metrics["substring_match"].append(metric["substring_match"])
 
                 if CONFIG.VERBOSE:
-                    print(f"Prediction: {pred}")
-                    print(f"\tAnswer: {answer}")
+                    print(f"\tPrediction: {pred}")
+                    print(f"\tAnswers: {answers}")
                     print(f"\texact_match: {metric['exact_match']}")
-                    print(f"\tnormed_edit_distance: {metric['normed_edit_distance']}")
-                    print(f"\tsubstring_match: {metric['substring_match']}")
+                    print(f"\tanls: {metric['anls']}")
 
     return {
         "eval/accuracy": np.mean(val_metrics["exact_match"]),
-        "eval/avg_normed_edit_distance": np.mean(val_metrics["normed_edit_distance"]),
-        "eval/substring_match_accuracy": np.mean(val_metrics["substring_match"])
+        "eval/anls": np.mean(val_metrics["anls"]),
     }
 
 

@@ -40,6 +40,7 @@ def prepare_dataloader(model, processor):
         task_start_token="<s_docvqa>",
         prompt_end_token="<s_answer>",
         sort_json_key=CONFIG.SORT_JSON_KEY,  # cord dataset is preprocessed, so no need for this
+        multiple_answers=True,
     )
 
     val_dataset = DonutDataset(
@@ -51,6 +52,7 @@ def prepare_dataloader(model, processor):
         task_start_token="<s_docvqa>",
         prompt_end_token="<s_answer>",
         sort_json_key=CONFIG.SORT_JSON_KEY,  # cord dataset is preprocessed, so no need for this
+        multiple_answers=True,
     )
 
     train_dataloader = DataLoader(
@@ -147,8 +149,8 @@ def train():
     processor_dir = Path(CONFIG.RESULT_PATH) / f"donut_{timestamp}" / "processor"
 
     scaler = torch.amp.GradScaler("cuda")
-    best_val_metric = float("inf")
-    steps = 0
+    best_val_metric = 0.0
+    steps = 4999
 
     for epoch in range(CONFIG.MAX_EPOCHS):
         # Training phase
@@ -214,9 +216,9 @@ def train():
                     step=steps,
                 )
 
-                if best_val_metric > eval_results["avg_normed_edit_distance"]:
+                if best_val_metric < eval_results["eval/anls"]:
                     print("Saving Model!")
-                    best_val_metric = eval_results["avg_normed_edit_distance"]
+                    best_val_metric = eval_results["eval/anls"]
                     model.save_pretrained(model_dir)
                     processor.save_pretrained(processor_dir)
 

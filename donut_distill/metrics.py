@@ -1,4 +1,6 @@
 from nltk import edit_distance
+from anls import anls_score
+from typing import List
 
 def calculate_metrics_funsd(ground_truth, predictions, strict=False):
     
@@ -25,13 +27,11 @@ def calculate_metrics_funsd(ground_truth, predictions, strict=False):
 
     return f1_score, recall, precision
 
-def calculate_metrics_docvqa(ground_truth: str, prediction: str):
-    normed_edit_distance = edit_distance(prediction, ground_truth) / max(len(prediction), len(ground_truth))
-    exact_match = ground_truth == prediction
-    substring_match = ground_truth in prediction or prediction in ground_truth
+def calculate_metrics_docvqa(ground_truths: List[str], prediction: str):
+    exact_match = prediction in ground_truths 
+    anls = anls_score(prediction=prediction, gold_labels=ground_truths, threshold=0.5)
 
     return {
-        "normed_edit_distance": normed_edit_distance,
+        "anls": anls,
         "exact_match": exact_match,
-        "substring_match": substring_match,
     }
