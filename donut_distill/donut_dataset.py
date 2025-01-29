@@ -53,7 +53,7 @@ class DonutDataset(Dataset):
             prompt_end_token if prompt_end_token else task_start_token
         )
         self.sort_json_key = sort_json_key
-        self.mupltiple_answers = multiple_answers
+        self.multiple_answers = multiple_answers
 
         self.dataset = load_dataset(dataset_name_or_path, split=self.split)
         self.dataset_length = len(self.dataset)
@@ -165,45 +165,31 @@ class DonutDataset(Dataset):
         ).pixel_values
         pixel_values = pixel_values.squeeze()
 
+        # targets
+        target_sequence = random.choice(
+            self.gt_token_sequences[idx]
+        )  # can be more than one, e.g., DocVQA Task 1
+        input_ids = self.processor.tokenizer(
+            target_sequence,
+            add_special_tokens=False,
+            max_length=self.max_length,
+            padding="max_length",
+            truncation=True,
+            return_tensors="pt",
+        )["input_ids"].squeeze(0)
 
-        if self.split == "train" or not self.multiple_answers:
-            # Single-answer mode (training or when multiple_answers is False)
-            target_sequence = random.choice(self.gt_token_sequences[idx])
-            input_ids = self.processor.tokenizer(
-                target_sequence,
-                add_special_tokens=False,
-                max_length=self.max_length,
-                padding="max_length",
-                truncation=True,
-                return_tensors="pt",
-            )["input_ids"].squeeze(0)
-
-            if self.split == "train":
-                labels = input_ids.clone()
-                labels[labels == self.processor.tokenizer.pad_token_id] = self.ignore_id
-                labels[: torch.nonzero(labels == self.prompt_end_token_id).sum() + 1] = self.ignore_id
-                return pixel_values, input_ids, labels
-            else:
-                prompt_end_index = torch.nonzero(input_ids == self.prompt_end_token_id).sum()
-                return pixel_values, input_ids, prompt_end_index, target_sequence
-
+        if self.split == "train":
+            labels = input_ids.clone()
+            labels[labels == self.processor.tokenizer.pad_token_id] = (
+                self.ignore_id
+            )  # model doesn't need to predict pad token
+            labels[: torch.nonzero(labels == self.prompt_end_token_id).sum() + 1] = self.ignore_id  # model doesn't need to predict prompt (for VQA)
+            return pixel_values, input_ids, labels
         else:
-            # Multiple-answer mode (for validation/testing)
-            input_ids_list = [
-                self.processor.tokenizer(
-                    target_sequence,
-                    add_special_tokens=False,
-                    max_length=self.max_length,
-                    padding="max_length",
-                    truncation=True,
-                    return_tensors="pt",
-                )["input_ids"].squeeze(0)
-                for target_sequence in self.gt_token_sequences[idx]
-            ]
-
-            prompt_end_indices = [
-                torch.nonzero(input_ids == self.prompt_end_token_id).sum()
-                for input_ids in input_ids_list
-            ]
-
-            return pixel_values, input_ids_list, prompt_end_indices, self.gt_token_sequences[idx]
+            prompt_end_index = torch.nonzero(
+                input_ids == self.prompt_end_token_id
+            ).sum()  # return prompt end index instead of target output labels
+            if self.mupltiple_answers:
+                return pixel_values, input_ids, prompt_end_index, self.gt_token_sequences[idx]
+            else:
+                return pixel_values, input_ids, prompt_end_index, target_sequence

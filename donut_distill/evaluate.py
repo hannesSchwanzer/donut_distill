@@ -27,21 +27,17 @@ def evaluate_docvqa(
     model.eval()
     with torch.no_grad():
         for batch in tqdm(val_dataloader, desc="Validate"):
-            pixel_values, decoder_input_ids_list, prompt_end_idxs_list, answers_list = batch
-            pixel_values = pixel_values.to(device)  # (batch_size, channels, height, width)
+            pixel_values, decoder_input_ids, prompt_end_idxs, answers_list = batch
+            pixel_values = pixel_values.to(device)
 
-            batch_size = pixel_values.shape[0]
-
-            # **Decoder prompts remain the same across all answers per item**
             decoder_prompts = pad_sequence(
                 [
-                    input_ids[0][: prompt_end_idx[0] + 1]
-                    for input_ids, prompt_end_idx in zip(decoder_input_ids_list, prompt_end_idxs_list)
+                    input_id[: end_idx + 1]
+                    for input_id, end_idx in zip(decoder_input_ids, prompt_end_idxs)
                 ],
                 batch_first=True,
-            ).to(device)  # Shape: (batch_size, seq_length)
+            ).to(device)
 
-            # **Generate all predictions at once**
             outputs = model.generate(
                 pixel_values,
                 decoder_input_ids=decoder_prompts,
@@ -54,28 +50,25 @@ def evaluate_docvqa(
                 generation_config=generation_config,
             )
 
-            # **Decode predictions**
-            predictions = processor.tokenizer.batch_decode(outputs.sequences, skip_special_tokens=True)
+            predictions = processor.tokenizer.batch_decode(outputs.sequences)
 
-            # **Compare each prediction with all possible answers**
             for pred, answers in zip(predictions, answers_list):
+
+                if isinstance(answers, str):
+                    answers = [answers]  # Single ground truth case
+                
                 if CONFIG.VERBOSE:
                     print("\n----------------------------------------")
-                    print("Answers unverarbeitet:", answers)
                     print("Prediction unverarbeitet:", pred)
-
-                pred = postprocess_donut_docvqa(pred, processor, verbose=CONFIG.VERBOSE)
                 answers = [postprocess_donut_docvqa(ans, processor) for ans in answers]
+                pred = postprocess_donut_docvqa(pred, processor, verbose=CONFIG.VERBOSE)
 
-                # **Pass all answers at once to calculate_metrics**
-                metric = calculate_metrics_docvqa(answers, pred)  # Now takes a list of answers
-
-                # **Store metrics**
+                metric = calculate_metrics_docvqa(answers, pred)
                 val_metrics["anls"].append(metric["anls"])
                 val_metrics["exact_match"].append(metric["exact_match"])
 
                 if CONFIG.VERBOSE:
-                    print(f"\tPrediction: {pred}")
+                    print(f"Prediction: {pred}")
                     print(f"\tAnswers: {answers}")
                     print(f"\texact_match: {metric['exact_match']}")
                     print(f"\tanls: {metric['anls']}")
