@@ -3,7 +3,7 @@ from transformers import (
     VisionEncoderDecoderModel,
     VisionEncoderDecoderConfig,
 )
-from donut_distill.donut_dataset import DonutDataset, collate_fn_docvqa
+from donut_distill.donut_dataset import DonutDataset, collate_fn_docvqa_eval
 from torch.utils.data import DataLoader
 import torch
 import wandb
@@ -65,7 +65,7 @@ def prepare_dataloader(model, processor):
         batch_size=CONFIG.VAL_BATCH_SIZES,
         shuffle=False,
         num_workers=CONFIG.NUM_WORKERS,
-        collate_fn=collate_fn_docvqa,
+        collate_fn=collate_fn_docvqa_eval,
     )
 
     return train_dataloader, val_dataloader
