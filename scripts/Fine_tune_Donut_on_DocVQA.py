@@ -289,7 +289,6 @@ class DonutDataset(Dataset):
 # In[31]:
 
 
-dataset
 
 
 # In[32]:
@@ -312,8 +311,8 @@ val_dataset = DonutDataset("./preprocessed_dataset_docvqa/", max_length=max_leng
                              )
 
 # Limit dataset size
-train_dataset = torch.utils.data.Subset(train_dataset, range(1000))  # First 1000 samples
-val_dataset = torch.utils.data.Subset(val_dataset, range(200))  # First 200 samples
+# train_dataset = torch.utils.data.Subset(train_dataset, range(1000))  # First 1000 samples
+# val_dataset = torch.utils.data.Subset(val_dataset, range(200))  # First 200 samples
 
 
 # In[33]:
@@ -377,8 +376,8 @@ answer
 
 from torch.utils.data import DataLoader
 
-train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=4)
-val_dataloader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=4)
+train_dataloader = DataLoader(train_dataset, batch_size=4, shuffle=True, num_workers=4)
+val_dataloader = DataLoader(val_dataset, batch_size=4, shuffle=False, num_workers=4)
 
 
 # Let's verify a batch:
@@ -461,7 +460,7 @@ class DonutModelPLModule(pl.LightningModule):
             batch_first=True,
         )
 
-        decoded_prompts = self.processor.tokenizer.batch_decode(decoder_prompts)[0]
+        decoded_prompts = self.processor.tokenizer.batch_decode(decoder_prompts)
         
         outputs = self.model.generate(pixel_values,
                                    decoder_input_ids=decoder_prompts,
@@ -484,7 +483,7 @@ class DonutModelPLModule(pl.LightningModule):
         for pred, answers, prompt in zip(predictions, answers_lists, decoded_prompts):
             answer_list = answers.split("\n")
             answer_list = [postprocess_donut_docvqa(ans, processor) for ans in answer_list]
-            pred = postprocess_donut_docvqa(pred, processor, verbose=config.verbose)
+            pred = postprocess_donut_docvqa(pred, processor, verbose=self.config["verbose"])
             metric = calculate_metrics_docvqa(answer_list, pred)
             batch_metrics["anls"].append(metric["anls"])
             batch_metrics["exact_match"].append(float(metric["exact_match"]))  # Convert bool to float for averaging
@@ -492,7 +491,7 @@ class DonutModelPLModule(pl.LightningModule):
             if self.config.get("verbose", False):
                 print(f"Prompt: {prompt}")
                 print(f"\tPrediction: {pred}")
-                print(f"\tAnswer: {answer}")
+                print(f"\tAnswer: {answers}")
                 print(metric)
 
         batch_metrics["anls"] = torch.tensor(batch_metrics["anls"], dtype=torch.float32)
@@ -511,10 +510,8 @@ class DonutModelPLModule(pl.LightningModule):
             save_path = os.path.join(self.config["result_path"], "best_model")
             os.makedirs(save_path, exist_ok=True)
 
-            # Save model state_dict
-            torch.save(self.model.state_dict(), os.path.join(save_path, "best_model.pth"))
-            # Save processor
-            self.processor.save_pretrained(os.path.join(save_path, "processor"))
+            self.processor.save_pretrained()
+            self.model.save_pretrained(save_path)
 
             print(f"Best model saved with ANLS: {avg_anls:.4f}")
 
@@ -525,18 +522,17 @@ class DonutModelPLModule(pl.LightningModule):
         max_iter = None
 
         if int(self.config.get("max_epochs", -1)) > 0:
-            assert len(self.config.train_batch_sizes) == 1, "Set max_epochs only if the number of datasets is 1"
-            max_iter = (self.config.max_epochs * self.config.num_training_samples_per_epoch) / (
-                self.config.train_batch_sizes[0] * torch.cuda.device_count() * self.config.get("num_nodes", 1)
+            assert len(self.config["train_batch_sizes"]) == 1, "Set max_epochs only if the number of datasets is 1"
+            max_iter = (self.config["max_epochs"]* self.config["num_training_samples_per_epoch"]) / (
+                self.config["train_batch_sizes"][0] * torch.cuda.device_count() * self.config.get("num_nodes", 1)
             )
 
         if int(self.config.get("max_steps", -1)) > 0:
-            max_iter = min(self.config.max_steps, max_iter) if max_iter is not None else self.config.max_steps
-
+            max_iter = min(self.config["max_steps"], max_iter) if max_iter is not None else self.config["max_steps"]
         assert max_iter is not None
         optimizer = torch.optim.Adam(self.parameters(), lr=self.config.get("lr", 3e-5))
         scheduler = {
-            "scheduler": self.cosine_scheduler(optimizer, max_iter, self.config.warmup_steps),
+            "scheduler": self.cosine_scheduler(optimizer, max_iter, self.config["warmup_steps"]),
             "name": "learning_rate",
             "interval": "step",
         }
@@ -547,6 +543,17 @@ class DonutModelPLModule(pl.LightningModule):
 
     def val_dataloader(self):
         return val_dataloader
+
+    @staticmethod
+    def cosine_scheduler(optimizer, training_steps, warmup_steps):
+        def lr_lambda(current_step):
+            if current_step < warmup_steps:
+                return current_step / max(1, warmup_steps)
+            progress = current_step - warmup_steps
+            progress /= max(1, training_steps - warmup_steps)
+            return max(0.0, 0.5 * (1.0 + math.cos(math.pi * progress)))
+
+        return LambdaLR(optimizer, lr_lambda)
 
 
 # Next, we instantiate the module:
