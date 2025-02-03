@@ -2,6 +2,7 @@ from torch.utils.data import DataLoader
 from transformers import (
     DonutProcessor,
     VisionEncoderDecoderModel,
+    GenerationConfig,
 )
 import torch
 from donut_distill.evaluate import evaluate_docvqa
@@ -52,3 +53,7 @@ def validate_finedtuned_donut_on_docvqa():
         )
 
     print(eval_results)
+
+
+if __name__ == "__main__":
+    validate_finedtuned_donut_on_docvqa()
