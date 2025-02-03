@@ -11,7 +11,7 @@ from PIL import Image
 added_tokens = []
 pad_token_id = "0"
 
-def collate_fn_docvqaeval(batch):
+def collate_fn_docvqa_eval(batch):
     if len(batch[0]) == 4:
         pixel_values, input_ids, prompt_end_idxs, target_sequences = zip(*batch)
 
