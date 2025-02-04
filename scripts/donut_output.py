@@ -22,7 +22,7 @@ val_dataset = DonutDataset(
 
 val_dataloader = DataLoader(
     val_dataset,
-    batch_size=CONFIG.VAL_BATCH_SIZES,
+    batch_size=1,
     shuffle=False,
     num_workers=CONFIG.NUM_WORKERS,
 )

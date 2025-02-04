@@ -6,7 +6,7 @@ from transformers import (
 )
 import torch
 from donut_distill.evaluate import evaluate_docvqa
-from donut_distill.donut_dataset import DonutDataset,collate_fn_docvqa_eval 
+from donut_distill.donut_dataset import DonutDataset, collate_fn_docvqa_eval 
 import donut_distill.config as CONFIG
 
 MODEL_ID = "naver-clova-ix/donut-base-finetuned-docvqa"
