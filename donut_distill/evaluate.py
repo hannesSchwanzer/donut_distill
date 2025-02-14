@@ -25,8 +25,15 @@ def evaluate_docvqa(
     val_metrics = {"exact_match": [], "anls": []}
 
     model.eval()
+
+    num_val_batches = len(val_dataloader)
+    # Process only 20% of the validation batches (at least 1)
+    limit_batches = max(1, int(num_val_batches * 0.2))
     with torch.no_grad():
-        for batch in tqdm(val_dataloader, desc="Validate"):
+        for i, batch in enumerate(tqdm(val_dataloader, desc="Validate")):
+            if i >= limit_batches:
+                break
+
             pixel_values, decoder_input_ids, prompt_end_idxs, answers_list = batch
             pixel_values = pixel_values.to(device)
 
@@ -37,6 +44,8 @@ def evaluate_docvqa(
                 ],
                 batch_first=True,
             ).to(device)
+
+            decoded_prompts = processor.tokenizer.batch_decode(decoder_prompts)
 
             outputs = model.generate(
                 pixel_values,
@@ -52,20 +61,18 @@ def evaluate_docvqa(
 
             predictions = processor.tokenizer.batch_decode(outputs.sequences)
 
-            for pred, answers in zip(predictions, answers_list):
-                if CONFIG.VERBOSE:
-                    print("\n----------------------------------------")
-                    print("Prediction unverarbeitet:", pred)
-                answers = [postprocess_donut_docvqa(ans, processor) for ans in answers]
+            for pred, answers, prompt in zip(predictions, answers_list, decoded_prompts):
+                answer_list = answers.split("\n")
+                answer_list = [postprocess_donut_docvqa(ans, processor) for ans in answer_list]
                 pred = postprocess_donut_docvqa(pred, processor, verbose=CONFIG.VERBOSE)
 
-                metric = calculate_metrics_docvqa(answers, pred)
+                metric = calculate_metrics_docvqa(answer_list, pred)
                 val_metrics["anls"].append(metric["anls"])
-                val_metrics["exact_match"].append(metric["exact_match"])
+                val_metrics["exact_match"].append(float(metric["exact_match"]))
 
                 if CONFIG.VERBOSE:
                     print(f"Prediction: {pred}")
-                    print(f"\tAnswers: {answers}")
+                    print(f"\tAnswers: {answer_list}")
                     print(f"\texact_match: {metric['exact_match']}")
                     print(f"\tanls: {metric['anls']}")
 

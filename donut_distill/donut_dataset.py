@@ -1,36 +1,35 @@
 import json
 import random
-from typing import Any, List, Tuple
+from typing import Any, List
 import torch
 from torch.utils.data import Dataset
 from datasets import load_dataset
 from transformers import DonutProcessor, VisionEncoderDecoderModel
-from PIL import Image
 
 # https://github.com/NielsRogge/Transformers-Tutorials/blob/master/Donut/CORD/Fine_tune_Donut_on_a_custom_dataset_(CORD)_with_PyTorch_Lightning.ipynb
 added_tokens = []
 pad_token_id = "0"
 
-def collate_fn_docvqa_eval(batch):
-    if len(batch[0]) == 4:
-        pixel_values, input_ids, prompt_end_idxs, target_sequences = zip(*batch)
-
-        # Stack pixel_values and input_ids into tensors
-        pixel_values = torch.stack(pixel_values)
-        input_ids = torch.stack(input_ids)
-        prompt_end_idxs = torch.tensor(prompt_end_idxs)
-
-        # Ensure target_sequences are always lists (for ANLS computation)
-        processed_targets = []
-        for target in target_sequences:
-            if isinstance(target, str):
-                processed_targets.append([target])  # Wrap single GT in a list
-            else:
-                processed_targets.append(target)  # Already a list of multiple GTs
-
-        return pixel_values, input_ids, prompt_end_idxs, processed_targets
-    else: 
-        raise Exception()
+# def collate_fn_docvqa_eval(batch):
+#     if len(batch[0]) == 4:
+#         pixel_values, input_ids, prompt_end_idxs, target_sequences = zip(*batch)
+#
+#         # Stack pixel_values and input_ids into tensors
+#         pixel_values = torch.stack(pixel_values)
+#         input_ids = torch.stack(input_ids)
+#         prompt_end_idxs = torch.tensor(prompt_end_idxs)
+#
+#         # Ensure target_sequences are always lists (for ANLS computation)
+#         processed_targets = []
+#         for target in target_sequences:
+#             if isinstance(target, str):
+#                 processed_targets.append([target])  # Wrap single GT in a list
+#             else:
+#                 processed_targets.append(target)  # Already a list of multiple GTs
+#
+#         return pixel_values, input_ids, prompt_end_idxs, processed_targets
+#     else: 
+#         raise Exception()
 
 
 class DonutDataset(Dataset):
@@ -58,7 +57,7 @@ class DonutDataset(Dataset):
         max_length: int,
         split: str = "train",
         ignore_id: int = -100,
-        task_start_token: str = "",
+        task_start_token: str = "<s>",
         prompt_end_token: str = None,
         sort_json_key: bool = True,
         task: str = "",
@@ -121,7 +120,7 @@ class DonutDataset(Dataset):
         """
         Convert an ordered JSON object into a token sequence
         """
-        if type(obj) == dict:
+        if type(obj) is dict:
             if len(obj) == 1 and "text_sequence" in obj:
                 return obj["text_sequence"]
             else:
@@ -141,7 +140,7 @@ class DonutDataset(Dataset):
                         + rf"</s_{k}>"
                     )
                 return output
-        elif type(obj) == list:
+        elif type(obj) is list:
             return r"<sep/>".join(
                 [
                     self.json2token(
@@ -179,12 +178,12 @@ class DonutDataset(Dataset):
             labels : masked labels (model doesn't need to predict prompt and pad token)
         """
         sample = self.dataset[idx]
-        image = sample["image"].convert("RGB")
-        # rgb_image = Image.merge("RGB", (image, image, image))
+
         # inputs
+        image = sample["image"].convert("RGB")
         pixel_values = self.processor(
             # image, random_padding=self.split == "train", return_tensors="pt"
-            image, random_padding=False, return_tensors="pt"
+            image, random_padding=self.split == "train", return_tensors="pt"
         ).pixel_values
         pixel_values = pixel_values.squeeze()
 
@@ -203,9 +202,7 @@ class DonutDataset(Dataset):
 
         if self.split == "train":
             labels = input_ids.clone()
-            labels[labels == self.processor.tokenizer.pad_token_id] = (
-                self.ignore_id
-            )  # model doesn't need to predict pad token
+            labels[labels == self.processor.tokenizer.pad_token_id] = self.ignore_id # model doesn't need to predict pad token
             labels[: torch.nonzero(labels == self.prompt_end_token_id).sum() + 1] = self.ignore_id  # model doesn't need to predict prompt (for VQA)
             return pixel_values, input_ids, labels
         else:
@@ -213,6 +210,6 @@ class DonutDataset(Dataset):
                 input_ids == self.prompt_end_token_id
             ).sum()  # return prompt end index instead of target output labels
             if self.task == 'docvqa':
-                return pixel_values, input_ids, prompt_end_index, self.gt_token_sequences[idx]
+                return pixel_values, input_ids, prompt_end_index, "\n".join(self.gt_token_sequences[idx])
             else:
                 return pixel_values, input_ids, prompt_end_index, target_sequence

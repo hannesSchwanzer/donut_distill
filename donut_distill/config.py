@@ -4,19 +4,19 @@ MODEL_ID            = 'naver-clova-ix/donut-base'
 # MAX_LENGTH          = 768     # funsd
 MAX_LENGTH          = 128  # docvqa
 RESUME_FROM_CHECKPOINT_PATH= None # only used for resume_from_checkpoint option in PL
-RESULT_PATH= "./result"
+RESULT_PATH= "./result/docvqa"
 PRETRAINED_MODEL_NAME_OR_PATH= "naver-clova-ix/donut-base" # loading a pre-trained model (from moldehub or path)
 # DATASET_TRAINING= "./preprocessed_dataset/train" # loading datasets (from moldehub or path)
 # DATASET_VALIDATE= "./preprocessed_dataset/test" # loading datasets (from moldehub or path)
 DATASET= "./preprocessed_dataset_docvqa/" # loading datasets (from moldehub or path)
 DATASET_NAME_TRAINING="train"
 DATASET_NAME_VALIDATE="validation"
-SORT_JSON_KEY= True
-TRAIN_BATCH_SIZES= 1
-VAL_BATCH_SIZES=4
+SORT_JSON_KEY= False
+TRAIN_BATCH_SIZES=4
+VAL_BATCH_SIZES=1
 # INPUT_SIZE= [1280, 960] # when the input resolution differs from the pre-training setting, some weights will be newly initialized (but the model training would be okay)
 # INPUT_SIZE= [2560, 1920] # when the input resolution differs from the pre-training setting, some weights will be newly initialized (but the model training would be okay)
-INPUT_SIZE= [1920, 1440] # when the input resolution differs from the pre-training setting, some weights will be newly initialized (but the model training would be okay)
+INPUT_SIZE= [1280, 960] # when the input resolution differs from the pre-training setting, some weights will be newly initialized (but the model training would be okay)
 ALIGN_LONG_AXIS= False
 NUM_NODES= 1
 LR= 3e-5
@@ -29,8 +29,9 @@ NUM_WORKERS= 0
 GRADIENT_CLIP_VAL= 0.25
 VERBOSE= True
 LOG_INTERVAL = 10
-ACCUMULATION_STEPS = 2
+ACCUMULATION_STEPS = 1
 VALIDATE_EVERY_N_BATCHES = 5000
+VAL_CHECK_INTRERVAL = 0.2
 
 
 ''' training parameters'''

@@ -377,7 +377,7 @@ answer
 from torch.utils.data import DataLoader
 
 train_dataloader = DataLoader(train_dataset, batch_size=4, shuffle=True, num_workers=4)
-val_dataloader = DataLoader(val_dataset, batch_size=4, shuffle=False, num_workers=4)
+val_dataloader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=4)
 
 
 # Let's verify a batch:
@@ -491,7 +491,7 @@ class DonutModelPLModule(pl.LightningModule):
             if self.config.get("verbose", False):
                 print(f"Prompt: {prompt}")
                 print(f"\tPrediction: {pred}")
-                print(f"\tAnswer: {answers}")
+                print(f"\tAnswer: {answer_list}")
                 print(metric)
 
         batch_metrics["anls"] = torch.tensor(batch_metrics["anls"], dtype=torch.float32)
@@ -510,7 +510,7 @@ class DonutModelPLModule(pl.LightningModule):
             save_path = os.path.join(self.config["result_path"], "best_model")
             os.makedirs(save_path, exist_ok=True)
 
-            self.processor.save_pretrained()
+            self.processor.save_pretrained(save_path)
             self.model.save_pretrained(save_path)
 
             print(f"Best model saved with ANLS: {avg_anls:.4f}")
@@ -568,7 +568,7 @@ config = {"max_epochs":30,
           "num_training_samples_per_epoch": len(train_dataset),
           "lr":3e-5,
           "train_batch_sizes": [4],
-          "val_batch_sizes": [4],
+          "val_batch_sizes": [1],
           # "seed":2022,
           "num_nodes": 1,
           "warmup_steps": 10000, # 800/8*30/10, 10%
