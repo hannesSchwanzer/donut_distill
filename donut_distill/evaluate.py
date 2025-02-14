@@ -28,7 +28,7 @@ def evaluate_docvqa(
 
     num_val_batches = len(val_dataloader)
     # Process only 20% of the validation batches (at least 1)
-    limit_batches = max(1, int(num_val_batches * 0.2))
+    limit_batches = max(1, int(num_val_batches * CONFIG.LIMIT_VAL_BATCHES))
     with torch.no_grad():
         for i, batch in enumerate(tqdm(val_dataloader, desc="Validate")):
             if i >= limit_batches:
