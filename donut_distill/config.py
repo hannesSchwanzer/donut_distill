@@ -33,6 +33,8 @@ ACCUMULATION_STEPS = 1
 VAL_CHECK_INTERVAL = 0.2
 LIMIT_VAL_BATCHES = 1
 
+''' Student parameters '''
+TEACHER_MODEL_PATH = 'result/docvqa/best_model'
 
 ''' training parameters'''
 # BATCH_SIZE          = 5

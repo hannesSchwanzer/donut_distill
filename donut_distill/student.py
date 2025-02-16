@@ -45,17 +45,17 @@ def create_student(
 
     # copy each layer weights (check for state_dict with numbers)
     # encoder
-    for stage_no in range(len(encoder_layer_map)):
-        for s_encoder_layer_no, t_encoder_layer_no in enumerate(encoder_layer_map[stage_no]):
-            if t_encoder_layer_no is None:
-                continue
-            s_encoder_layer_no = str(s_encoder_layer_no)
-            t_encoder_layer_no = str(t_encoder_layer_no)
-            for s_k in s_encoder_state_dict.keys():
-                t_k = s_k.replace(f"layers.{stage_no}.blocks.{s_encoder_layer_no}", f"layers.{stage_no}.blocks.{t_encoder_layer_no}")
-                # print(f's_k: {s_k}, t_k:{t_k}')
-                if f"layers.{stage_no}.blocks.{s_encoder_layer_no}" in s_k:
-                    s_encoder_state_dict[s_k] = t_encoder_state_dict[t_k]
+    # for stage_no in range(len(encoder_layer_map)):
+    #     for s_encoder_layer_no, t_encoder_layer_no in enumerate(encoder_layer_map[stage_no]):
+    #         if t_encoder_layer_no is None:
+    #             continue
+    #         s_encoder_layer_no = str(s_encoder_layer_no)
+    #         t_encoder_layer_no = str(t_encoder_layer_no)
+    #         for s_k in s_encoder_state_dict.keys():
+    #             t_k = s_k.replace(f"layers.{stage_no}.blocks.{s_encoder_layer_no}", f"layers.{stage_no}.blocks.{t_encoder_layer_no}")
+    #             # print(f's_k: {s_k}, t_k:{t_k}')
+    #             if f"layers.{stage_no}.blocks.{s_encoder_layer_no}" in s_k:
+    #                 s_encoder_state_dict[s_k] = t_encoder_state_dict[t_k]
 
     # decoder
     for s_decoder_layer_no, t_decoder_layer_no in enumerate(decoder_layer_map):
