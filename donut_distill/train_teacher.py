@@ -15,11 +15,22 @@ from torch.optim.lr_scheduler import LambdaLR
 import donut_distill.config as CONFIG
 from donut_distill.evaluate import evaluate_docvqa
 from transformers import GenerationConfig
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from donut_distill.student import create_student
 from donut_distill.train_student import calculate_loss_and_accuracy_distillation
+import argparse
+import yaml
 
 TOKENIZERS_PARALLELISM = False
+
+def load_config(path: str):
+    with open(path, 'r') as config_file:
+        config_data: Dict[str, Any] = yaml.safe_load(config_file)
+
+    for key, value in config_data.items():
+        if hasattr(CONFIG, key.upper()):
+            setattr(CONFIG, key.upper(), value)
+
 
 
 # https://github.com/NielsRogge/Transformers-Tutorials/blob/master/Donut/DocVQA/Fine_tune_Donut_on_DocVQA.ipynb
@@ -326,4 +337,14 @@ def train(distill: bool = False):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", help="Input the path to the config file with the settings you want to train with", type=str, default=None)
+    args = parser.parse_args()
+
+    if args.config:
+        load_config(args.config)
+
     train(distill=True)
+
+
+
