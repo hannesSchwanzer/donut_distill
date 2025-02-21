@@ -15,7 +15,7 @@ from torch.optim.lr_scheduler import LambdaLR
 import donut_distill.config as CONFIG
 from donut_distill.evaluate import evaluate_docvqa
 from transformers import GenerationConfig
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from donut_distill.student import create_student
 from donut_distill.train_student import calculate_loss_and_accuracy_distillation
 import argparse
@@ -88,17 +88,17 @@ def prepare_model_and_processor(
     special_tokens: Optional[List[str]] = None,
     return_config: bool = False,
     load_teacher: bool = False,
-):
+) -> Tuple[VisionEncoderDecoderModel, DonutProcessor] | Tuple[VisionEncoderDecoderModel, DonutProcessor, VisionEncoderDecoderConfig]:
     if load_teacher:
         model_dir = CONFIG.TEACHER_MODEL_PATH
     else:
         model_dir = CONFIG.MODEL_ID
-    donut_config = VisionEncoderDecoderConfig.from_pretrained(model_dir)
+    donut_config: VisionEncoderDecoderConfig = VisionEncoderDecoderConfig.from_pretrained(model_dir)
     donut_config.encoder.image_size = CONFIG.INPUT_SIZE
     donut_config.decoder.max_length = CONFIG.MAX_LENGTH
 
-    processor = DonutProcessor.from_pretrained(model_dir)
-    model = VisionEncoderDecoderModel.from_pretrained(
+    processor: DonutProcessor = DonutProcessor.from_pretrained(model_dir)
+    model: VisionEncoderDecoderModel = VisionEncoderDecoderModel.from_pretrained(
         model_dir, config=donut_config
     )
 
@@ -143,23 +143,21 @@ def prepare_optimizer_and_scheduler(model, len_trainingsdata):
     return optimizer, scheduler
 
 
-def train(distill: bool = False):
+def train():
     model, processor, donut_config = prepare_model_and_processor(
-        special_tokens=["<yes/>", "<no/>"], return_config=True, load_teacher=distill
+        special_tokens=["<yes/>", "<no/>"], return_config=True, load_teacher=CONFIG.DISTILL
     )
 
     train_dataloader, val_dataloader = prepare_dataloader(model, processor)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    if distill:
-        decoder_layer_map = [1, 3, 4]
-        encoder_layer_map = None
+    if CONFIG.DISTILL:
         student_model = create_student(
             teacher=model,
             teacher_config=donut_config,
-            encoder_layer_map=encoder_layer_map,
-            decoder_layer_map=decoder_layer_map,
+            encoder_layer_map=CONFIG.ENCODER_LAYER_MAP,
+            decoder_layer_map=CONFIG.DECODER_LAYER_MAP,
         )
         student_model.to(device)
 
@@ -202,7 +200,7 @@ def train(distill: bool = False):
 
     for epoch in range(CONFIG.MAX_EPOCHS):
         # Training phase
-        if distill:
+        if CONFIG.DISTILL:
             model.eval()
             student_model.train()
         else:
@@ -217,7 +215,7 @@ def train(distill: bool = False):
             labels = labels[:, 1:].to(device)
 
             with torch.autocast(device_type="cuda"):
-                if distill:
+                if CONFIG.DISTILL:
                     teacher_outputs = model(
                         pixel_values,
                         decoder_input_ids=decoder_input_ids,
@@ -274,14 +272,14 @@ def train(distill: bool = False):
             steps += 1
 
             if (i + 1) % val_check_interval_batches == 0:
-                if distill:
+                if CONFIG.DISTILL:
                     student_model.eval()
                 else:
                     model.eval()
                 torch.cuda.empty_cache()
 
                 with torch.autocast(device_type="cuda"):
-                    if distill:
+                    if CONFIG.DISTILL:
                         eval_results = evaluate_docvqa(
                             model=student_model,
                             processor=processor,
@@ -318,7 +316,7 @@ def train(distill: bool = False):
                     processor.save_pretrained(model_dir)
 
                 torch.cuda.empty_cache()
-                if distill:
+                if CONFIG.DISTILL:
                     student_model.train()
                 else:
                     model.train()
@@ -343,8 +341,4 @@ if __name__ == "__main__":
 
     if args.config:
         load_config(args.config)
-
-    train(distill=True)
-
-
 
