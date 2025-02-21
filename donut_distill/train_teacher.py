@@ -83,12 +83,12 @@ def prepare_model_and_processor(
     else:
         model_dir = CONFIG.MODEL_ID
     donut_config = VisionEncoderDecoderConfig.from_pretrained(model_dir)
-    donut_config.encoder.image_size = model_dir
-    donut_config.decoder.max_length = model_dir
+    donut_config.encoder.image_size = CONFIG.INPUT_SIZE
+    donut_config.decoder.max_length = CONFIG.MAX_LENGTH
 
-    processor = DonutProcessor.from_pretrained(CONFIG.MODEL_ID)
+    processor = DonutProcessor.from_pretrained(model_dir)
     model = VisionEncoderDecoderModel.from_pretrained(
-        CONFIG.MODEL_ID, config=donut_config
+        model_dir, config=donut_config
     )
 
     if special_tokens:
@@ -193,7 +193,7 @@ def train(distill: bool = False):
         # Training phase
         if distill:
             model.eval()
-            student_model.eval()
+            student_model.train()
         else:
             model.train()
         total_loss = 0

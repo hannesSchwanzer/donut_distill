@@ -31,7 +31,8 @@ def calculate_loss_and_accuracy_distillation(outputs: Seq2SeqLMOutput,
 
         # Distillation: First one complete training only on hidden_states and attentions... in the decoder
         for student_layer_idx, teacher_layer_idx in enumerate(decoder_layer_map):
-            # We distill the attention scores...
+            # We distill the attention scores... TODO: Gewichten, schauen ob hidden states, attention etwas bringt (alpha bzw beta auf 0)
+            # TODO: 1 / len(attentions)
             total_loss += mse_loss_fn(outputs.decoder_attentions[student_layer_idx], teacher_outputs.decoder_attentions[teacher_layer_idx])
             # ...and we distill the hidden_states, where layer indices are offset by 1 due to the embedding layer
             total_loss += mse_loss_fn(outputs.decoder_hidden_states[student_layer_idx+1], teacher_outputs.decoder_hidden_states[teacher_layer_idx+1])
