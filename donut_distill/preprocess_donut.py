@@ -3,6 +3,7 @@ from os import listdir, path
 from pathlib import Path
 import shutil
 from tqdm import tqdm
+from datasets import DatasetDict, load_dataset
 
 
 def preprocess_annotations_links_funsd(annotation_path):
@@ -143,6 +144,24 @@ def preprocess_docvqa(annotations_path, images_path, output_path):
         metadata_file.close()
 
 
+def create_subset(source_dir, destination_dir, train_size, val_size):
+
+    dataset = load_dataset(source_dir)
+
+    # Select a subset
+    train_dataset = dataset["train"].select(range(train_size))
+    val_dataset = dataset["validation"].select(range(val_size))
+
+    subset = DatasetDict(
+        {
+            "train": train_dataset,
+            "validation": val_dataset
+        }
+    )
+
+    # Save in Hugging Face format
+    subset.save_to_disk(destination_dir)
+
 
 if __name__ == "__main__":
     # test_directory = "dataset/testing_data"
@@ -157,5 +176,7 @@ if __name__ == "__main__":
     # preprocess_directory_funsd(train_directory, "preprocessed_dataset/test", process_annotation_fn)
     # preprocess_directory_funsd(train_directory, "preprocessed_dataset/train", process_annotation_fn)
 
-    preprocess_docvqa("docvqa/queries", "docvqa", "preprocessed_dataset_docvqa")
+    # preprocess_docvqa("docvqa/queries", "docvqa", "preprocessed_dataset_docvqa")
+
+    create_subset("preprocessed_dataset_docvqa", "preprocessed_dataset_docvqa_small", 50, 10)
 
