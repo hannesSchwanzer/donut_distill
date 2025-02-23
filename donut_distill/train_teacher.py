@@ -16,7 +16,7 @@ import donut_distill.config as CONFIG
 from donut_distill.evaluate import evaluate_docvqa
 from transformers import GenerationConfig
 from typing import Any, Dict, List, Optional, Tuple
-from donut_distill.student import create_student
+from donut_distill.student import create_student, create_student_small, distill_decoder
 from donut_distill.train_student import calculate_loss_and_accuracy_distillation
 import argparse
 import yaml
@@ -153,7 +153,7 @@ def train():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     if CONFIG.DISTILL:
-        student_model = create_student(
+        student_model = create_student_small(
             teacher=model,
             teacher_config=donut_config,
             encoder_layer_map=CONFIG.ENCODER_LAYER_MAP,
@@ -235,7 +235,7 @@ def train():
                     is_first_distillation_phase=True,
                     is_1phase_distillation=True,
                     # encoder_layer_map: List[List[int]],     # e.g. [[1,2], [1,2], [1,2,4,5,7,8,10,11,13,14], [1,2]] Teacher has form [2,2,14,2]
-                    decoder_layer_map=decoder_layer_map, # Teacher has 4 Layers
+                    decoder_layer_map=CONFIG.DECODER_LAYER_MAP, # Teacher has 4 Layers
                     device=device)
 
                 else:
@@ -342,3 +342,4 @@ if __name__ == "__main__":
     if args.config:
         load_config(args.config)
 
+    train()

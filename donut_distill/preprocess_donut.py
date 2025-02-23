@@ -101,8 +101,7 @@ def preprocess_directory_funsd(directory_path, output_path, process_annotation_f
     metadata_file.close()
 
 
-def preprocess_docvqa(annotations_path, images_path, output_path):
-
+def preprocess_docvqa(annotations_path, images_path, output_path, train_limit=None, validation_limit=None):
     for annotation_file_name in listdir(annotations_path):
         annotation_file_name = path.join(annotations_path, annotation_file_name)
         if path.isdir(annotation_file_name):
@@ -110,11 +109,18 @@ def preprocess_docvqa(annotations_path, images_path, output_path):
 
         with open(annotation_file_name, "r") as annotation_file:
             annotation_file = json.load(annotation_file)
+
         dataset_split = annotation_file["dataset_split"]
         if dataset_split == "test":
             continue
 
         data = annotation_file["data"]
+
+        # Apply limits if specified
+        if dataset_split == "train" and train_limit is not None:
+            data = data[:train_limit]
+        elif dataset_split == "val" and validation_limit is not None:
+            data = data[:validation_limit]
 
         output_directory = path.join(output_path, dataset_split)
         Path(output_directory).mkdir(parents=True, exist_ok=True)
@@ -127,17 +133,14 @@ def preprocess_docvqa(annotations_path, images_path, output_path):
             question = datapoint["question"]
             answers = datapoint["answers"]
 
-            gt_parses = []
-            for answer in answers:
-                gt_parses.append({"question": question, "answer": answer})
+            gt_parses = [{"question": question, "answer": answer} for answer in answers]
 
             file_metadata = {
                 "file_name": image_name,
                 "ground_truth": json.dumps({"gt_parses": gt_parses}),
             }
 
-            metadata_file.write(json.dumps(file_metadata))
-            metadata_file.write("\n")
+            metadata_file.write(json.dumps(file_metadata) + "\n")
 
             shutil.copy(image_path, output_directory)
 
@@ -176,7 +179,7 @@ if __name__ == "__main__":
     # preprocess_directory_funsd(train_directory, "preprocessed_dataset/test", process_annotation_fn)
     # preprocess_directory_funsd(train_directory, "preprocessed_dataset/train", process_annotation_fn)
 
-    # preprocess_docvqa("docvqa/queries", "docvqa", "preprocessed_dataset_docvqa")
+    preprocess_docvqa("docvqa/queries", "docvqa", "preprocessed_dataset_docvqa_small", 50, 10)
 
-    create_subset("preprocessed_dataset_docvqa", "preprocessed_dataset_docvqa_small", 50, 10)
+    # create_subset("preprocessed_dataset_docvqa", "preprocessed_dataset_docvqa_small", 50, 10)
 
