@@ -14,7 +14,23 @@ def calculate_loss_and_accuracy_distillation(outputs: Seq2SeqLMOutput,
                     is_1phase_distillation: bool,
                     # encoder_layer_map: List[List[int]],     # e.g. [[1,2], [1,2], [1,2,4,5,7,8,10,11,13,14], [1,2]] Teacher has form [2,2,14,2]
                     decoder_layer_map: List[int], # Teacher has 4 Layers
-                    device) -> torch.Tensor:
+                    device,
+                    alpha: float=1,
+                    beta: float=1,
+                    gamma: float=1,
+                                             ) -> torch.Tensor:
+    # Normalize alpha, beta, gamma
+    if is_1phase_distillation:
+        normalize_factor = 1 / (alpha + beta + gamma)
+        alpha *= normalize_factor
+        beta *= normalize_factor
+        gamma *= normalize_factor
+    elif is_first_distillation_phase:
+        normalize_factor = 1 / (alpha + beta)
+        alpha *= normalize_factor
+        beta *= normalize_factor
+    else:
+        gamma = 1
     
     total_loss = torch.tensor([0.0], device=device)
     if is_first_distillation_phase or is_1phase_distillation:
@@ -31,14 +47,12 @@ def calculate_loss_and_accuracy_distillation(outputs: Seq2SeqLMOutput,
 
         # Distillation: First one complete training only on hidden_states and attentions... in the decoder
         for student_layer_idx, teacher_layer_idx in enumerate(decoder_layer_map):
-            # We distill the attention scores... TODO: Gewichten, schauen ob hidden states, attention etwas bringt (alpha bzw beta auf 0)
-            # TODO: 1 / len(attentions)
-            total_loss += mse_loss_fn(outputs.decoder_attentions[student_layer_idx], teacher_outputs.decoder_attentions[teacher_layer_idx])
+            total_loss += (1 / len(decoder_layer_map)) * alpha * mse_loss_fn(outputs.decoder_attentions[student_layer_idx], teacher_outputs.decoder_attentions[teacher_layer_idx])
             # ...and we distill the hidden_states, where layer indices are offset by 1 due to the embedding layer
-            total_loss += mse_loss_fn(outputs.decoder_hidden_states[student_layer_idx+1], teacher_outputs.decoder_hidden_states[teacher_layer_idx+1])
+            total_loss += (1 / (len(decoder_layer_map) + 1)) * beta * mse_loss_fn(outputs.decoder_hidden_states[student_layer_idx+1], teacher_outputs.decoder_hidden_states[teacher_layer_idx+1])
 
         # Finally we also distill the embedding layer
-        total_loss += mse_loss_fn(outputs.decoder_hidden_states[0], teacher_outputs.decoder_hidden_states[0])
+        total_loss += (1 / (len(decoder_layer_map) + 1)) * beta * mse_loss_fn(outputs.decoder_hidden_states[0], teacher_outputs.decoder_hidden_states[0])
 
     if (not is_first_distillation_phase) or is_1phase_distillation:
         # Flatten the tokens and labels for CrossEntropyLoss
@@ -46,7 +60,7 @@ def calculate_loss_and_accuracy_distillation(outputs: Seq2SeqLMOutput,
 
         # Distillation: ...afterwards one complete training only on logits
         # Have to use log_softmax for predictions here, see: https://pytorch.org/docs/stable/generated/torch.nn.KLDivLoss.html
-        loss_val = kl_loss_fn(F.log_softmax(logits, dim=-1), F.softmax(teacher_outputs.logits, dim=-1))
+        loss_val = gamma * kl_loss_fn(F.log_softmax(logits, dim=-1), F.softmax(teacher_outputs.logits, dim=-1))
         total_loss += loss_val
 
     return total_loss
