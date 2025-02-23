@@ -36,6 +36,6 @@ LIMIT_VAL_BATCHES = 1
 
 ''' Distillation parameters '''
 TEACHER_MODEL_PATH = 'result/docvqa/best_model'
-DECODER_LAYER_MAP = [1, 3, 4]
+DECODER_LAYER_MAP = [0, 2, 3]
 ENCODER_LAYER_MAP = []
 
