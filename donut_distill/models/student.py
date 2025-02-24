@@ -5,7 +5,7 @@ from transformers import (
     VisionEncoderDecoderConfig,
 )
 import re
-import donut_distill.config as CONFIG
+import donut_distill.config.config as CONFIG
 
 def copy_decoder_layers(student_decoder_state_dict, teacher_decoder_state_dict, decoder_layer_map):
     # This regex matches keys starting with "decoder.layers.<number>."
@@ -128,58 +128,6 @@ def create_student(
     return student
 
 
-
-def distill_decoder(teacher_model: VisionEncoderDecoderModel, remove_layer_idx: int = 1) -> VisionEncoderDecoderModel:
-    """
-    Creates a distilled student model by removing one decoder layer from the teacher model.
-    
-    This function assumes:
-      - The teacher model is a VisionEncoderDecoderModel with an attribute `decoder.layers`
-        that is a list of identical layers.
-      - The teacher config contains an attribute (e.g., `decoder_layers`) for the number of decoder layers.
-      
-    The function removes the layer at index `remove_layer_idx` (default is 1, i.e. the second layer)
-    and copies the parameters from the remaining teacher layers to the corresponding student layers.
-    
-    Args:
-        teacher_model (VisionEncoderDecoderModel): The teacher model loaded with its weights.
-        remove_layer_idx (int, optional): The index of the decoder layer to remove. Default is 1.
-        
-    Returns:
-        VisionEncoderDecoderModel: A new student model with one fewer decoder layer.
-    """
-    # Copy the teacher's config and adjust the number of decoder layers.
-    student_config = deepcopy(teacher_model.config)
-    
-    # Here we assume the config uses an attribute 'decoder_layers' to record the number of layers.
-    num_teacher_layers = teacher_model.config.decoder_layers
-    student_config.decoder_layers = num_teacher_layers - 1
-    
-    # Create a new model (student) using the modified config.
-    student_model = VisionEncoderDecoderModel(student_config)
-    
-    # Copy the encoder parameters directly from the teacher.
-    student_model.encoder.load_state_dict(teacher_model.encoder.state_dict())
-    
-    # Now, handle the decoder.
-    # This assumes that the decoder has an attribute `layers` (a list of layers).
-    teacher_decoder_layers = teacher_model.decoder.layers
-    student_decoder_layers = student_model.decoder.layers
-    
-    # Ensure the student decoder has one less layer than the teacher.
-    assert len(teacher_decoder_layers) - 1 == len(student_decoder_layers), "Mismatch in expected decoder layers count."
-    
-    student_layer_idx = 0
-    for teacher_layer_idx, teacher_layer in enumerate(teacher_decoder_layers):
-        if teacher_layer_idx == remove_layer_idx:
-            # Skip the layer that we want to remove.
-            continue
-        # Copy the full state (parameters, including attention and hidden state parameters) from teacher to student.
-        student_decoder_layers[student_layer_idx].load_state_dict(teacher_layer.state_dict())
-        student_layer_idx += 1
-    
-    return student_model
-
 def print_config(config, indent=0):
     """Recursively print the VisionEncoderDecoderConfig."""
     spacing = "  " * indent
@@ -207,14 +155,14 @@ def create_student_small(
     config.encoder = deepcopy(teacher_config.encoder)
     config.decoder.decoder_layers = len(decoder_layer_map)
 
-    student = VisionEncoderDecoderModel.from_config(config)
+    student = VisionEncoderDecoderModel(config=config)
 
     t_state_dict = teacher.state_dict()
     t_encoder_state_dict = teacher.encoder.state_dict()
     t_decoder_state_dict = teacher.decoder.state_dict()
 
-    # Temporarly delete embedding layer, otherwise we get size missmatch error
     student.load_state_dict(t_state_dict, strict=False)
+
     s_decoder_state_dict = student.decoder.state_dict()
 
     # Copy decoder weights using the regex-based mapping

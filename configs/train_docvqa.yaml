@@ -19,7 +19,7 @@ align_long_axis: False
 ### Train parameters ###
 train_batch_sizes: 4
 accumulation_steps: 1
-lr: 3e-5
+lr: !!float 3e-5
 gradient_clip_val: 0.25
 
 num_nodes: 1

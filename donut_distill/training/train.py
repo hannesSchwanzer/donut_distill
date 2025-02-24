@@ -1,147 +1,158 @@
-from transformers import (
-    DonutProcessor,
-    VisionEncoderDecoderModel,
-    VisionEncoderDecoderConfig,
-)
-from donut_distill.donut_dataset import DonutDataset
-from torch.utils.data import DataLoader
+import argparse
+from datetime import datetime
+from pathlib import Path
 import torch
 import wandb
 from tqdm import tqdm
-from datetime import datetime
-from pathlib import Path
-import math
-from torch.optim.lr_scheduler import LambdaLR
-import donut_distill.config as CONFIG
-from donut_distill.evaluate import evaluate_docvqa
 from transformers import GenerationConfig
-from typing import Any, Dict, List, Optional, Tuple
-from donut_distill.student import create_student, create_student_small, distill_decoder
-from donut_distill.train_student import calculate_loss_and_accuracy_distillation
-import argparse
-import yaml
+
+from donut_distill.config.loader import load_config
+from donut_distill.models.helpers import prepare_model_and_processor
+from donut_distill.models.student import create_student_small
+from donut_distill.training.utils import prepare_dataloader, prepare_optimizer_and_scheduler
+from donut_distill.training.losses import calculate_loss_and_accuracy_distillation
+from donut_distill.evaluation.evaluate import evaluate_docvqa
+import donut_distill.config.config as CONFIG
 
 TOKENIZERS_PARALLELISM = False
 
-def load_config(path: str):
-    with open(path, 'r') as config_file:
-        config_data: Dict[str, Any] = yaml.safe_load(config_file)
-
-    for key, value in config_data.items():
-        if hasattr(CONFIG, key.upper()):
-            setattr(CONFIG, key.upper(), value)
-
-
-
-# https://github.com/NielsRogge/Transformers-Tutorials/blob/master/Donut/DocVQA/Fine_tune_Donut_on_DocVQA.ipynb
-def add_tokens(model, processor, list_of_tokens: List[str]):
+def train_one_epoch(model, student_model, train_dataloader, optimizer, scheduler, device, processor, start_step):
     """
-    Add tokens to tokenizer and resize the token embeddings
+    Train for one epoch with mid-epoch validation and logging.
     """
-    newly_added_num = processor.tokenizer.add_tokens(list_of_tokens)
-    if newly_added_num > 0:
-        model.decoder.resize_token_embeddings(len(processor.tokenizer))
-
-
-def prepare_dataloader(model, processor):
-    train_dataset = DonutDataset(
-        dataset_name_or_path=CONFIG.DATASET,
-        processor=processor,
-        model=model,
-        max_length=CONFIG.MAX_LENGTH,
-        split=CONFIG.DATASET_NAME_TRAINING,
-        task_start_token="<s_docvqa>",
-        prompt_end_token="<s_answer>",
-        sort_json_key=CONFIG.SORT_JSON_KEY,  # cord dataset is preprocessed, so no need for this
-        task="docvqa",
-    )
-
-    val_dataset = DonutDataset(
-        dataset_name_or_path=CONFIG.DATASET,
-        processor=processor,
-        model=model,
-        max_length=CONFIG.MAX_LENGTH,
-        split=CONFIG.DATASET_NAME_VALIDATE,
-        task_start_token="<s_docvqa>",
-        prompt_end_token="<s_answer>",
-        sort_json_key=CONFIG.SORT_JSON_KEY,  # cord dataset is preprocessed, so no need for this
-        task="docvqa",
-    )
-
-    train_dataloader = DataLoader(
-        train_dataset,
-        batch_size=CONFIG.TRAIN_BATCH_SIZES,
-        shuffle=True,
-        num_workers=CONFIG.NUM_WORKERS,
-    )
-    val_dataloader = DataLoader(
-        val_dataset,
-        batch_size=CONFIG.VAL_BATCH_SIZES,
-        shuffle=True,
-        num_workers=CONFIG.NUM_WORKERS,
-    )
-
-    return train_dataloader, val_dataloader
-
-
-def prepare_model_and_processor(
-    special_tokens: Optional[List[str]] = None,
-    return_config: bool = False,
-    load_teacher: bool = False,
-) -> Tuple[VisionEncoderDecoderModel, DonutProcessor] | Tuple[VisionEncoderDecoderModel, DonutProcessor, VisionEncoderDecoderConfig]:
-    if load_teacher:
-        model_dir = CONFIG.TEACHER_MODEL_PATH
+    # Set proper mode: if distilling, use teacher model in eval() and student in train()
+    if CONFIG.DISTILL:
+        model.eval()
+        student_model.train()
     else:
-        model_dir = CONFIG.MODEL_ID
-    donut_config: VisionEncoderDecoderConfig = VisionEncoderDecoderConfig.from_pretrained(model_dir)
-    donut_config.encoder.image_size = CONFIG.INPUT_SIZE
-    donut_config.decoder.max_length = CONFIG.MAX_LENGTH
+        model.train()
 
-    processor: DonutProcessor = DonutProcessor.from_pretrained(model_dir)
-    model: VisionEncoderDecoderModel = VisionEncoderDecoderModel.from_pretrained(
-        model_dir, config=donut_config
-    )
+    total_loss = 0.0
+    scaler = torch.amp.GradScaler("cuda")
+    steps = start_step
+    num_batches = len(train_dataloader)
+    val_check_interval = max(1, int(num_batches * CONFIG.VAL_CHECK_INTERVAL))
 
-    if special_tokens:
-        add_tokens(model, processor, special_tokens)
+    for i, batch in enumerate(tqdm(train_dataloader, desc="Training Epoch")):
+        # Unpack and send data to device
+        pixel_values, decoder_input_ids, labels = [x.to(device) for x in batch]
+        decoder_input_ids = decoder_input_ids[:, :-1]
+        labels = labels[:, 1:]
+        
+        with torch.autocast(device_type="cuda"):
+            if CONFIG.DISTILL:
+                teacher_outputs = model(
+                    pixel_values,
+                    decoder_input_ids=decoder_input_ids,
+                    labels=labels,
+                    output_attentions=True,
+                    output_hidden_states=True,
+                )
+                student_outputs = student_model(
+                    pixel_values,
+                    decoder_input_ids=decoder_input_ids,
+                    labels=labels,
+                    output_attentions=True,
+                    output_hidden_states=True,
+                )
+                loss = calculate_loss_and_accuracy_distillation(
+                    outputs=student_outputs,
+                    teacher_outputs=teacher_outputs,
+                    is_first_distillation_phase=True,
+                    is_1phase_distillation=True,
+                    decoder_layer_map=CONFIG.DECODER_LAYER_MAP,
+                    device=device
+                )
+            else:
+                outputs = model(pixel_values, decoder_input_ids=decoder_input_ids, labels=labels)
+                loss = outputs.loss
 
-    processor.image_processor.size = CONFIG.INPUT_SIZE[::-1]
-    processor.image_processor.do_align_long_axis = False
+        scaler.scale(loss).backward()
 
-    if return_config:
-        return model, processor, donut_config
-    else:
-        return model, processor
+        if (i + 1) % CONFIG.ACCUMULATION_STEPS == 0:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), CONFIG.GRADIENT_CLIP_VAL)
+            scaler.step(optimizer)
+            scaler.update()
+            optimizer.zero_grad()
+            scheduler.step()
 
+        total_loss += loss.item()
+        steps += 1
 
-def cosine_scheduler(optimizer, training_steps, warmup_steps):
-    def lr_lambda(current_step):
-        if current_step < warmup_steps:
-            return current_step / max(1, warmup_steps)
-        progress = current_step - warmup_steps
-        progress /= max(1, training_steps - warmup_steps)
-        return max(0.0, 0.5 * (1.0 + math.cos(math.pi * progress)))
+        # Log training metrics at configured intervals
+        if steps % CONFIG.LOG_INTERVAL == 0:
+            wandb.log({
+                "train/loss": loss.item(),
+                "gpu/memory_allocated": torch.cuda.memory_allocated(),
+                "gpu/memory_reserved": torch.cuda.memory_reserved(),
+                "lr": optimizer.param_groups[0]["lr"],
+                "step": steps,
+            }, step=steps)
 
-    return LambdaLR(optimizer, lr_lambda)
+        # Mid-epoch validation
+        if (i + 1) % val_check_interval == 0:
+            # Switch to evaluation mode
+            if CONFIG.DISTILL:
+                student_model.eval()
+            else:
+                model.eval()
+            torch.cuda.empty_cache()
+            
+            eval_results = evaluate_docvqa(
+                model=student_model if CONFIG.DISTILL else model,
+                processor=processor,
+                device=device,
+                val_dataloader=val_dataloader,
+                generation_config=GenerationConfig(
+                    early_stopping=True,
+                    num_beams=1,
+                ),
+            )
+            # Log evaluation metrics mid-epoch
+            wandb.log(eval_results, step=steps)
+            
+            # Return to training mode
+            if CONFIG.DISTILL:
+                student_model.train()
+            else:
+                model.train()
+            torch.cuda.empty_cache()
 
+    avg_loss = total_loss / num_batches
+    return avg_loss, steps
 
-def prepare_optimizer_and_scheduler(model, len_trainingsdata):
-    optimizer = torch.optim.Adam(model.parameters(), lr=CONFIG.LR)
-    if int(CONFIG.MAX_EPOCHS) > 0:
-        max_iter = (CONFIG.MAX_EPOCHS * len_trainingsdata) / (
-            CONFIG.TRAIN_BATCH_SIZES * torch.cuda.device_count() * CONFIG.NUM_NODES
+def validate(model, val_dataloader, processor, device):
+    """
+    Validate the model on the validation dataset.
+    """
+    model.eval()
+    torch.cuda.empty_cache()
+
+    with torch.autocast(device_type="cuda"):
+        eval_results = evaluate_docvqa(
+            model=model,
+            processor=processor,
+            device=device,
+            val_dataloader=val_dataloader,
+            generation_config=GenerationConfig(
+                early_stopping=True,
+                num_beams=1,
+            ),
         )
 
-    if int(CONFIG.MAX_STEPS) > 0:
-        max_iter = (
-            min(CONFIG.MAX_STEPS, max_iter)
-            if max_iter is not None
-            else CONFIG.MAX_STEPS
-        )
-    assert max_iter is not None
-    scheduler = cosine_scheduler(optimizer, max_iter, CONFIG.WARMUP_STEPS)
-    return optimizer, scheduler
+    torch.cuda.empty_cache()
+    return eval_results
 
+def check_gradients(model):
+    highest_gradient = 0
+    for name, param in model.named_parameters():
+        if param.grad is not None:
+            grad_norm = param.grad.data.norm(2).item()
+            if grad_norm > highest_gradient:
+                highest_gradient = grad_norm
+            if grad_norm > 1e2:  # Threshold for large gradients
+                print(f"⚠️ High gradient detected in {name}: {grad_norm:.2f}")
+    return highest_gradient
 
 def train():
     model, processor, donut_config = prepare_model_and_processor(
@@ -160,11 +171,6 @@ def train():
             decoder_layer_map=CONFIG.DECODER_LAYER_MAP,
         )
         student_model.to(device)
-
-    # model.config.pad_token_id = processor.tokenizer.pad_token_id
-    # model.config.decoder_start_token_id = processor.tokenizer.convert_tokens_to_ids(
-    #     [""]
-    # )[0]
 
     model.to(device)
 
@@ -230,13 +236,14 @@ def train():
                         output_attentions=True,
                         output_hidden_states=True,
                     )
-                    loss = calculate_loss_and_accuracy_distillation(outputs=student_outputs, 
-                    teacher_outputs=teacher_outputs,
-                    is_first_distillation_phase=True,
-                    is_1phase_distillation=True,
-                    # encoder_layer_map: List[List[int]],     # e.g. [[1,2], [1,2], [1,2,4,5,7,8,10,11,13,14], [1,2]] Teacher has form [2,2,14,2]
-                    decoder_layer_map=CONFIG.DECODER_LAYER_MAP, # Teacher has 4 Layers
-                    device=device)
+                    loss = calculate_loss_and_accuracy_distillation(
+                        outputs=student_outputs, 
+                        teacher_outputs=teacher_outputs,
+                        is_first_distillation_phase=True,
+                        is_1phase_distillation=True,
+                        decoder_layer_map=CONFIG.DECODER_LAYER_MAP,  # Teacher has 4 Layers
+                        device=device
+                    )
 
                 else:
                     outputs = model(
@@ -245,6 +252,7 @@ def train():
                     loss = outputs.loss
 
             scaler.scale(loss).backward()
+            highest_gradient = check_gradients(model)
 
             if (i + 1) % CONFIG.ACCUMULATION_STEPS == 0:
                 torch.nn.utils.clip_grad_norm_(
@@ -264,6 +272,7 @@ def train():
                         "gpu/memory_reserved": torch.cuda.memory_reserved(),
                         "lr": optimizer.param_groups[0]["lr"],
                         "epoch": epoch,
+                        "highest_gradient": highest_gradient,
                     },
                     step=steps,
                 )

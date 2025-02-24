@@ -1,4 +1,3 @@
-from nltk import edit_distance
 from anls import anls_score
 from typing import List
 

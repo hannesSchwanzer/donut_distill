@@ -7,11 +7,10 @@ from transformers import (
     VisionEncoderDecoderModel,
 )
 from torch.nn.utils.rnn import pad_sequence
-import donut_distill.config as CONFIG
-from donut_distill.donut_dataset import DonutDataset
-from donut_distill.metrics import calculate_metrics_docvqa, calculate_metrics_funsd
+import donut_distill.config.config as CONFIG
+from donut_distill.evaluation.metrics import calculate_metrics_docvqa, calculate_metrics_funsd
 from transformers import GenerationConfig
-from donut_distill.other import postprocess_donut_docvqa, postprocess_donut_funsd
+from donut_distill.data.postprocess_donut import postprocess_donut_docvqa, postprocess_donut_funsd
 import numpy as np
 
 
