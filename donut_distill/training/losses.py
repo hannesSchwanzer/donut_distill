@@ -106,7 +106,7 @@ def safe_mse_loss(output: torch.Tensor, target: torch.Tensor, device, weight: fl
 
     # Check for NaN or Inf
     if torch.isnan(loss).any() or torch.isinf(loss).any():
-        print("⚠️ NaN or Inf detected in MSE loss. Replacing with 0.")
+        print("NaN or Inf detected in MSE loss. Replacing with default values.")
         loss = torch.nan_to_num(loss, nan=0.0, posinf=1e5, neginf=-1e5).to(device)
 
     return loss
