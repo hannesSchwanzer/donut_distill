@@ -151,7 +151,7 @@ def train():
                     loss = outputs.loss
 
             scaler.scale(loss).backward()
-            highest_gradient = check_gradients(model=student_model if CONFIG.DISTILL else model)
+            # highest_gradient = check_gradients(model=student_model if CONFIG.DISTILL else model)
 
             if (i + 1) % CONFIG.ACCUMULATION_STEPS == 0:
                 torch.nn.utils.clip_grad_norm_(
@@ -171,7 +171,7 @@ def train():
                         "gpu/memory_reserved": torch.cuda.memory_reserved(),
                         "lr": optimizer.param_groups[0]["lr"],
                         "epoch": epoch,
-                        "highest_gradient": highest_gradient,
+                        # "highest_gradient": highest_gradient,
                     },
                     step=steps,
                 )
@@ -220,7 +220,10 @@ def train():
                 if best_val_metric < eval_results["eval/anls"]:
                     print("Saving Model!")
                     best_val_metric = eval_results["eval/anls"]
-                    model.save_pretrained(model_dir)
+                    if CONFIG.DISTILL:
+                        student_model.save_pretrained(model_dir)
+                    else:
+                        model.save_pretrained(model_dir)
                     processor.save_pretrained(model_dir)
 
                 torch.cuda.empty_cache()

@@ -7,46 +7,28 @@ from datasets import load_dataset
 from transformers import DonutProcessor, VisionEncoderDecoderModel
 
 # https://github.com/NielsRogge/Transformers-Tutorials/blob/master/Donut/CORD/Fine_tune_Donut_on_a_custom_dataset_(CORD)_with_PyTorch_Lightning.ipynb
-added_tokens = []
-pad_token_id = "0"
 
-# def collate_fn_docvqa_eval(batch):
-#     if len(batch[0]) == 4:
-#         pixel_values, input_ids, prompt_end_idxs, target_sequences = zip(*batch)
-#
-#         # Stack pixel_values and input_ids into tensors
-#         pixel_values = torch.stack(pixel_values)
-#         input_ids = torch.stack(input_ids)
-#         prompt_end_idxs = torch.tensor(prompt_end_idxs)
-#
-#         # Ensure target_sequences are always lists (for ANLS computation)
-#         processed_targets = []
-#         for target in target_sequences:
-#             if isinstance(target, str):
-#                 processed_targets.append([target])  # Wrap single GT in a list
-#             else:
-#                 processed_targets.append(target)  # Already a list of multiple GTs
-#
-#         return pixel_values, input_ids, prompt_end_idxs, processed_targets
-#     else: 
-#         raise Exception()
+added_tokens = []
 
 
 class DonutDataset(Dataset):
     """
     PyTorch Dataset for Donut. This class takes a HuggingFace Dataset as input.
 
-    Each row, consists of image path(png/jpg/jpeg) and gt data (json/jsonl/txt),
-    and it will be converted into pixel_values (vectorized image) and labels (input_ids of the tokenized string).
+    Each row consists of an image path (png/jpg/jpeg) and ground truth (JSON/JSONL/TXT).
+    It is converted into pixel_values (vectorized image) and labels (tokenized input_ids).
 
     Args:
-        dataset_name_or_path: name of dataset (available at huggingface.co/datasets) or the path containing image files and metadata.jsonl
-        max_length: the max number of tokens for the target sequences
-        split: whether to load "train", "validation" or "test" split
-        ignore_id: ignore_index for torch.nn.CrossEntropyLoss
-        task_start_token: the special token to be fed to the decoder to conduct the target task
-        prompt_end_token: the special token at the end of the sequences
-        sort_json_key: whether or not to sort the JSON keys
+        processor (DonutProcessor): Processor to handle images and tokenization.
+        model (VisionEncoderDecoderModel): Model whose tokenizer may be extended.
+        dataset_name_or_path (str): Dataset name (on HuggingFace) or local path containing images and metadata.jsonl.
+        max_length (int): Maximum number of tokens for target sequences.
+        split (str): Dataset split - "train", "validation", or "test".
+        ignore_id (int): Token ID to be ignored in loss computation (default: -100).
+        task_start_token (str): Special token indicating the start of the task.
+        prompt_end_token (str, optional): Token marking the end of the prompt (defaults to task_start_token).
+        sort_json_key (bool): Whether to sort JSON keys before tokenization.
+        task (str): Task name (used for specific behavior like DocVQA).
     """
 
     def __init__(
@@ -76,15 +58,17 @@ class DonutDataset(Dataset):
         self.sort_json_key = sort_json_key
         self.task = task
 
+        # Load dataset from HuggingFace or local path
         self.dataset = load_dataset(dataset_name_or_path, split=self.split)
         self.dataset_length = len(self.dataset)
 
+        # Process ground truth token sequences
         self.gt_token_sequences = []
         for sample in self.dataset:
             ground_truth = json.loads(sample["ground_truth"])
             if (
                 "gt_parses" in ground_truth
-            ):  # when multiple ground truths are available, e.g., docvqa
+            ):  # Multiple ground truth examples (e.g., DocVQA)
                 assert isinstance(ground_truth["gt_parses"], list)
                 gt_jsons = ground_truth["gt_parses"]
             else:
@@ -101,15 +85,15 @@ class DonutDataset(Dataset):
                         sort_json_key=self.sort_json_key,
                     )
                     + self.processor.tokenizer.eos_token
-                    for gt_json in gt_jsons  # load json from list of json
+                    for gt_json in gt_jsons  # Convert each JSON object into tokens
                 ]
             )
 
+        # Add special tokens for start/prompt end
         self.add_tokens([self.task_start_token, self.prompt_end_token])
         self.prompt_end_token_id = self.processor.tokenizer.convert_tokens_to_ids(
             self.prompt_end_token
         )
-
 
     def json2token(
         self,
@@ -118,7 +102,12 @@ class DonutDataset(Dataset):
         sort_json_key: bool = True,
     ):
         """
-        Convert an ordered JSON object into a token sequence
+        Convert a JSON object into a token sequence.
+
+        Handles different data structures:
+        - Dict: Recursively converts keys/values into a structured token format.
+        - List: Joins elements with a separator token.
+        - Other types: Converts to string and applies special token formatting.
         """
         if type(obj) is dict:
             if len(obj) == 1 and "text_sequence" in obj:
@@ -157,7 +146,7 @@ class DonutDataset(Dataset):
 
     def add_tokens(self, list_of_tokens: List[str]):
         """
-        Add special tokens to tokenizer and resize the token embeddings of the decoder
+        Add special tokens to the tokenizer and resize the model's embedding layer accordingly.
         """
         newly_added_num = self.processor.tokenizer.add_tokens(list_of_tokens)
         if newly_added_num > 0:
@@ -166,31 +155,44 @@ class DonutDataset(Dataset):
             added_tokens.extend(list_of_tokens)
 
     def __len__(self) -> int:
+        """
+        Return the total number of samples in the dataset.
+        """
         return self.dataset_length
 
     def __getitem__(self, idx: int):
         """
-        Load image from image_path of given dataset_path and convert into input_tensor and labels
-        Convert gt data into input_ids (tokenized string)
+        Retrieve and preprocess a dataset sample.
+
+        This function:
+        - Loads an image and converts it into a tensor.
+        - Selects a target sequence and tokenizes it.
+        - Masks certain labels during training.
+        - Handles variations based on the task.
+
         Returns:
-            input_tensor : preprocessed image
-            input_ids : tokenized gt_data
-            labels : masked labels (model doesn't need to predict prompt and pad token)
+            If training:
+                - pixel_values (Tensor): Preprocessed image.
+                - input_ids (Tensor): Tokenized ground truth sequence.
+                - labels (Tensor): Masked labels for loss computation.
+            Otherwise:
+                - pixel_values (Tensor): Preprocessed image.
+                - input_ids (Tensor): Tokenized ground truth sequence.
+                - prompt_end_index (int): Index marking the end of the prompt.
+                - target_sequence (str) or full ground truth sequence (str) for DocVQA.
         """
         sample = self.dataset[idx]
 
-        # inputs
+        # Process image input
         image = sample["image"].convert("RGB")
         pixel_values = self.processor(
-            # image, random_padding=self.split == "train", return_tensors="pt"
             image, random_padding=self.split == "train", return_tensors="pt"
-        ).pixel_values
-        pixel_values = pixel_values.squeeze()
+        ).pixel_values.squeeze()
 
-        # targets
-        target_sequence = random.choice(
-            self.gt_token_sequences[idx]
-        )  # can be more than one, e.g., DocVQA Task 1
+        # Select a ground truth token sequence (can be multiple for DocVQA)
+        target_sequence = random.choice(self.gt_token_sequences[idx])
+
+        # Tokenize the target sequence
         input_ids = self.processor.tokenizer(
             target_sequence,
             add_special_tokens=False,
@@ -201,14 +203,20 @@ class DonutDataset(Dataset):
         )["input_ids"].squeeze(0)
 
         if self.split == "train":
+            # Mask labels: ignore padding and prompt tokens
             labels = input_ids.clone()
-            labels[labels == self.processor.tokenizer.pad_token_id] = self.ignore_id # model doesn't need to predict pad token
-            labels[: torch.nonzero(labels == self.prompt_end_token_id).sum() + 1] = self.ignore_id  # model doesn't need to predict prompt (for VQA)
+            labels[labels == self.processor.tokenizer.pad_token_id] = (
+                self.ignore_id
+            )
+            labels[: torch.nonzero(labels == self.prompt_end_token_id).sum() + 1] = (
+                self.ignore_id
+            )
             return pixel_values, input_ids, labels
         else:
+            # Return prompt_end_index instead of masked labels for inference
             prompt_end_index = torch.nonzero(
                 input_ids == self.prompt_end_token_id
-            ).sum()  # return prompt end index instead of target output labels
+            ).sum()
             if self.task == 'docvqa':
                 return pixel_values, input_ids, prompt_end_index, "\n".join(self.gt_token_sequences[idx])
             else:

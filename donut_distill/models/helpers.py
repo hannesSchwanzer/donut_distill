@@ -6,10 +6,6 @@ from transformers import (
 import donut_distill.config.config as CONFIG
 from typing import List, Optional, Tuple
 from typing import Dict, List, Optional
-from transformers import (
-    DonutProcessor,
-    VisionEncoderDecoderModel,
-)
 import torch
 from PIL import Image
 import re
@@ -19,30 +15,46 @@ def prepare_model_and_processor(
     return_config: bool = False,
     load_teacher: bool = False,
 ) -> Tuple[VisionEncoderDecoderModel, DonutProcessor] | Tuple[VisionEncoderDecoderModel, DonutProcessor, VisionEncoderDecoderConfig]:
+    """
+    Loads and configures the Donut model and processor.
 
-    if load_teacher:
-        model_dir = CONFIG.TEACHER_MODEL_PATH
-    else:
-        model_dir = CONFIG.MODEL_ID
+    Args:
+        special_tokens (Optional[List[str]]): Additional special tokens to add to the tokenizer.
+        return_config (bool): Whether to return the model configuration along with the model and processor.
+        load_teacher (bool): If True, loads the teacher model instead of the default model.
+
+    Returns:
+        Tuple: A tuple containing:
+            - model (VisionEncoderDecoderModel): The Donut model.
+            - processor (DonutProcessor): The processor for tokenizing and image processing.
+            - donut_config (VisionEncoderDecoderConfig), optional: Returned if `return_config` is True.
+    """
+
+    # Determine which model to load (teacher or student)
+    model_dir = CONFIG.TEACHER_MODEL_PATH if load_teacher else CONFIG.MODEL_ID
+
+    # Load model configuration and update relevant parameters
     donut_config: VisionEncoderDecoderConfig = VisionEncoderDecoderConfig.from_pretrained(model_dir)
     donut_config.encoder.image_size = CONFIG.INPUT_SIZE
     donut_config.decoder.max_length = CONFIG.MAX_LENGTH
 
+    # Load processor and model
     processor: DonutProcessor = DonutProcessor.from_pretrained(model_dir)
     model: VisionEncoderDecoderModel = VisionEncoderDecoderModel.from_pretrained(
         model_dir, config=donut_config
     )
 
+    # Add special tokens if provided
     if special_tokens:
         add_tokens(model, processor, special_tokens)
+        donut_config.vocab_size = len(processor.tokenizer)  # Update vocabulary size
 
-    processor.image_processor.size = CONFIG.INPUT_SIZE[::-1]
+    # Update image processing settings
+    processor.image_processor.size = CONFIG.INPUT_SIZE[::-1]  # Reverse (height, width) format
     processor.image_processor.do_align_long_axis = False
 
-    if return_config:
-        return model, processor, donut_config
-    else:
-        return model, processor
+    # Return model, processor, and optionally the configuration
+    return (model, processor, donut_config) if return_config else (model, processor)
 
 
 # https://github.com/NielsRogge/Transformers-Tutorials/blob/master/Donut/DocVQA/Fine_tune_Donut_on_DocVQA.ipynb
@@ -60,6 +72,7 @@ def add_tokens(model: VisionEncoderDecoderModel, processor: DonutProcessor, list
         model.decoder.resize_token_embeddings(len(processor.tokenizer))
 
 
+# TODO: Update function
 def inference(
     model: VisionEncoderDecoderModel,
     processor: DonutProcessor,

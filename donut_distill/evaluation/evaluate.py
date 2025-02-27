@@ -26,7 +26,7 @@ def evaluate_docvqa(
     model.eval()
 
     num_val_batches = len(val_dataloader)
-    # Process only 20% of the validation batches (at least 1)
+
     limit_batches = max(1, int(num_val_batches * CONFIG.LIMIT_VAL_BATCHES))
     with torch.no_grad():
         for i, batch in enumerate(tqdm(val_dataloader, desc="Validate")):
@@ -70,6 +70,7 @@ def evaluate_docvqa(
                 val_metrics["exact_match"].append(float(metric["exact_match"]))
 
                 if CONFIG.VERBOSE:
+                    print(f"Prompt: {prompt}")
                     print(f"Prediction: {pred}")
                     print(f"\tAnswers: {answer_list}")
                     print(f"\texact_match: {metric['exact_match']}")

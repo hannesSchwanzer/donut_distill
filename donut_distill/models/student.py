@@ -7,19 +7,43 @@ from transformers import (
 import re
 import donut_distill.config.config as CONFIG
 
-def copy_decoder_layers(student_decoder_state_dict, teacher_decoder_state_dict, decoder_layer_map):
+def copy_decoder_layers(
+    student_decoder_state_dict: Dict[str, torch.Tensor], 
+    teacher_decoder_state_dict: Dict[str, torch.Tensor], 
+    decoder_layer_map: List[int]
+):
+    """
+    Copies the decoder layer weights from the teacher model to the student model based on the provided mapping.
+
+    Args:
+        student_decoder_state_dict (Dict[str, torch.Tensor]): The state dictionary of the student's decoder layers.
+        teacher_decoder_state_dict (Dict[str, torch.Tensor]): The state dictionary of the teacher's decoder layers.
+        decoder_layer_map (List[int]): A list mapping student decoder layers to the corresponding teacher layers.
+
+    Raises:
+        ValueError: If there is a shape mismatch between the student and teacher layers.
+        KeyError: If a teacher layer key is not found in the teacher's state dictionary.
+    """
     # This regex matches keys starting with "decoder.layers.<number>."
     pattern = re.compile(r"^(decoder\.layers\.)(\d+)(\..+)$")
+    
+    # Iterate through each key in the student decoder's state dict
     for s_key in list(student_decoder_state_dict.keys()):
-        m = pattern.match(s_key)
+        m = pattern.match(s_key)  # Match keys following the decoder layer pattern
+        
         if m:
+            # Extract layer number from the student key
             prefix, s_layer_str, suffix = m.groups()
             s_layer_idx = int(s_layer_str)
-            # Look up the corresponding teacher layer index from the mapping
+            
+            # Look up the corresponding teacher layer index from the decoder_layer_map
             t_layer_idx = decoder_layer_map[s_layer_idx]
-            # Construct the teacher key exactly
+            
+            # Construct the corresponding teacher key
             t_key = f"{prefix}{t_layer_idx}{suffix}"
+            
             if t_key in teacher_decoder_state_dict:
+                # Check if the shapes match before copying weights
                 if student_decoder_state_dict[s_key].shape == teacher_decoder_state_dict[t_key].shape:
                     student_decoder_state_dict[s_key] = teacher_decoder_state_dict[t_key]
                 else:
@@ -28,6 +52,7 @@ def copy_decoder_layers(student_decoder_state_dict, teacher_decoder_state_dict, 
                         f"and Teacher layer {t_key} {teacher_decoder_state_dict[t_key].shape} don't match."
                     )
             else:
+                # Raise an error if the teacher layer key is missing
                 raise KeyError(f"Teacher key {t_key} not found in teacher state dict")
 
 
@@ -146,29 +171,51 @@ def print_config(config, indent=0):
 def create_student_small(
     teacher: VisionEncoderDecoderModel,
     teacher_config: VisionEncoderDecoderConfig,
-    encoder_layer_map: List[List[int]],     # e.g. [[1,2], [1,2], [1,2,4,5,7,8,10,11,13,14], [1,2]] Teacher has form [2,2,14,2]
-    decoder_layer_map: List[int], # Teacher has 4 Layers
-):
-    # initialize student
+    encoder_layer_map: List[List[int]],  # e.g. [[1,2], [1,2], [1,2,4,5,7,8,10,11,13,14], [1,2]] (Teacher: [2,2,14,2])
+    decoder_layer_map: List[int],  # Maps teacher's decoder layers to the student (Teacher has 4 layers)
+) -> VisionEncoderDecoderModel:
+    """
+    Creates a smaller student model by selecting and copying layers from the teacher model.
+    This function does NOT perform distillation, it only initializes a reduced version of the model.
+
+    Args:
+        teacher (VisionEncoderDecoderModel): The pre-trained teacher model.
+        teacher_config (VisionEncoderDecoderConfig): The configuration of the teacher model.
+        encoder_layer_map (List[List[int]]): Mapping of teacher encoder layers to student layers.
+        decoder_layer_map (List[int]): Mapping of teacher decoder layers to student layers.
+
+    Returns:
+        VisionEncoderDecoderModel: A smaller student model with selected layers from the teacher.
+    """
+
+    # Initialize student model with a deep copy of the teacher's configuration
     config = deepcopy(teacher_config)
     config.decoder = deepcopy(teacher_config.decoder)
     config.encoder = deepcopy(teacher_config.encoder)
+
+    # Reduce the number of decoder layers according to the provided mapping
     config.decoder.decoder_layers = len(decoder_layer_map)
 
     student = VisionEncoderDecoderModel(config=config)
 
+    # Get state dictionaries for weight transfer
     t_state_dict = teacher.state_dict()
     t_encoder_state_dict = teacher.encoder.state_dict()
     t_decoder_state_dict = teacher.decoder.state_dict()
 
+    # Load all available weights from teacher into student (some layers will be missing)
     student.load_state_dict(t_state_dict, strict=False)
 
+    # Get the newly initialized student decoder state dict
     s_decoder_state_dict = student.decoder.state_dict()
 
-    # Copy decoder weights using the regex-based mapping
+    # Copy selected decoder weights based on the provided mapping
     copy_decoder_layers(s_decoder_state_dict, t_decoder_state_dict, decoder_layer_map)
 
+    # Load the exact encoder weights from the teacher
     student.encoder.load_state_dict(t_encoder_state_dict, strict=True)
+
+    # Load the modified decoder weights into the student model
     student.decoder.load_state_dict(s_decoder_state_dict, strict=True)
 
     return student
