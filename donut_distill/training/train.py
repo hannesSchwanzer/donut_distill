@@ -141,7 +141,11 @@ def train():
                         is_first_distillation_phase=True,
                         is_1phase_distillation=True,
                         decoder_layer_map=CONFIG.DECODER_LAYER_MAP,  # Teacher has 4 Layers
-                        device=device
+                        device=device,
+                        alpha=CONFIG.ALPHA,
+                        beta=CONFIG.BETA,
+                        gamma=CONFIG.GAMMA,
+                        delta=CONFIG.DELTA,
                     )
 
                 else:

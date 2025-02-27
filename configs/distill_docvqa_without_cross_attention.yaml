@@ -41,5 +41,4 @@ encoder_layer_map: []
 alpha: 1 # Weight for self-attention loss.
 beta: 1 # Weight for hidden states loss.
 gamma: 1 # Weight for logit-based loss.
-delta: 1 # Weight for cross-attention loss.
-
+delta: 0 # Weight for cross-attention loss.

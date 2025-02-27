@@ -38,4 +38,7 @@ LIMIT_VAL_BATCHES = 1
 TEACHER_MODEL_PATH = 'result/docvqa/best_model'
 DECODER_LAYER_MAP = [0, 2, 3]
 ENCODER_LAYER_MAP = []
-
+ALPHA = 1 # Weight for self-attention loss.
+BETA = 1 # Weight for hidden states loss.
+GAMMA = 1 # Weight for logit-based loss.
+DELTA = 1 # Weight for cross-attention loss.

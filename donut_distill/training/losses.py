@@ -18,7 +18,8 @@ def calculate_loss_and_accuracy_distillation(
     device: torch.device,
     alpha: float = 1,
     beta: float = 1,
-    gamma: float = 1
+    gamma: float = 1,
+    delta: float = 1
 ) -> torch.Tensor:
     """
     Calculate the distillation loss between teacher and student models.
@@ -30,7 +31,7 @@ def calculate_loss_and_accuracy_distillation(
         is_1phase_distillation (bool): If true, uses a combined phase for distillation.
         decoder_layer_map (List[int]): Mapping between teacher and student decoder layers.
         device (torch.device): Device (CPU or GPU).
-        alpha (float): Weight for attention loss.
+        alpha (float): Weight for self-attention loss.
         beta (float): Weight for hidden state loss.
         gamma (float): Weight for logit-based loss.
 
@@ -40,14 +41,16 @@ def calculate_loss_and_accuracy_distillation(
 
     # Normalize alpha, beta, gamma for balanced loss contribution
     if is_1phase_distillation:
-        normalize_factor = 1 / (alpha + beta + gamma)
+        normalize_factor = 1 / (alpha + beta + gamma + delta)
         alpha *= normalize_factor
         beta *= normalize_factor
         gamma *= normalize_factor
+        delta *= normalize_factor
     elif is_first_distillation_phase:
-        normalize_factor = 1 / (alpha + beta)
+        normalize_factor = 1 / (alpha + beta + delta)
         alpha *= normalize_factor
         beta *= normalize_factor
+        delta *= normalize_factor
     else:
         gamma = 1
 
@@ -56,6 +59,7 @@ def calculate_loss_and_accuracy_distillation(
     # Phase 1: Hidden states & attentions distillation
     if is_first_distillation_phase or is_1phase_distillation:
         for student_layer_idx, teacher_layer_idx in enumerate(decoder_layer_map):
+            # Self-attention
             total_loss += safe_mse_loss(
                 outputs.decoder_attentions[student_layer_idx],
                 teacher_outputs.decoder_attentions[teacher_layer_idx],
@@ -63,12 +67,22 @@ def calculate_loss_and_accuracy_distillation(
                 weight=(1 / len(decoder_layer_map)) * alpha
             )
 
+            # Cross-attention
+            total_loss += safe_mse_loss(
+                outputs.cross_attentions[student_layer_idx],
+                teacher_outputs.cross_attentions[teacher_layer_idx],
+                device,
+                weight=(1 / len(decoder_layer_map)) * alpha
+            )
+
+            # Hidden States
             total_loss += safe_mse_loss(
                 outputs.decoder_hidden_states[student_layer_idx+1],
                 teacher_outputs.decoder_hidden_states[teacher_layer_idx+1],
                 device,
                 weight=(1 / (len(decoder_layer_map) + 1)) * beta
             )
+
         # Distill embedding layer
         total_loss += safe_mse_loss(
             outputs.decoder_hidden_states[0],
@@ -84,7 +98,7 @@ def calculate_loss_and_accuracy_distillation(
         loss_val = gamma * kl_loss_fn(
             F.log_softmax(logits + epsilon, dim=-1),
             F.softmax(teacher_outputs.logits + epsilon, dim=-1)
-        )
+        ).to(device)
         total_loss += loss_val
 
     return total_loss

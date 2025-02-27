@@ -1,14 +1,13 @@
 import torch
-from donut_distill import config as CONFIG
-from donut_distill.train_teacher import add_tokens, prepare_dataloader, prepare_model_and_processor
-from donut_distill.donut_dataset import DonutDataset
+import donut_distill.config.config as CONFIG
+from donut_distill.models.helpers import add_tokens
+from donut_distill.data.donut_dataset import DonutDataset
 from torch.utils.data import DataLoader
 from transformers import (
     DonutProcessor,
     VisionEncoderDecoderModel,
     VisionEncoderDecoderConfig,
 )
-import gc
 
 
 
@@ -27,7 +26,7 @@ processor.image_processor.do_align_long_axis = False
 add_tokens(model, processor, ["<yes/>", "<no/>"])
 
 val_dataset = DonutDataset(
-    dataset_name_or_path=CONFIG.DATASET,
+    dataset_name_or_path="./preprocessed_dataset_docvqa_small/",
     processor=processor,
     model=model,
     max_length=CONFIG.MAX_LENGTH,
@@ -37,10 +36,6 @@ val_dataset = DonutDataset(
     sort_json_key=False,  # cord dataset is preprocessed, so no need for this
 )
 val_dataset_small = torch.utils.data.Subset(val_dataset, range(5))  # First 200 samples
-
-
-del val_dataset
-gc.collect()
 
 val_dataloader = DataLoader(
     val_dataset_small,
