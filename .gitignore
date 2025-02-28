@@ -8,3 +8,4 @@ build/
 donut_distill.egg-info/
 docvqa/
 preprocessed_dataset_docvqa/
+preprocessed_dataset_docvqa_small/

@@ -1,11 +1,62 @@
 from copy import deepcopy
-from typing import List
+from typing import List, Dict
 from transformers import (
     VisionEncoderDecoderModel,
     VisionEncoderDecoderConfig,
 )
 import re
 import donut_distill.config.config as CONFIG
+import torch
+
+def copy_encoder_layers(
+    student_encoder_state_dict: Dict[str, torch.Tensor],
+    teacher_encoder_state_dict: Dict[str, torch.Tensor],
+    encoder_layer_map: List[List[int]],  # e.g. [[1,2], [1,2], [1,2,4,5,7,8,10,11,13,14], [1,2]]
+):
+    """
+    Copies the encoder block weights from the teacher model to the student model
+    based on the provided mapping. This function assumes that the teacher encoder
+    consists of 4 stages (e.g., with [2,2,14,2] blocks) and that encoder_layer_map is a list
+    of 4 lists, each mapping student block indices (0-indexed order in the student)
+    to teacher block indices (provided here in 1-indexing, so a subtraction by 1 is applied).
+
+    For keys that follow the pattern:
+        encoder.layers.<stage_idx>.blocks.<block_idx>.<...>
+    the student key is replaced by the teacher key using:
+        teacher_block_idx = encoder_layer_map[stage_idx][student_block_idx] - 1
+
+    Args:
+        student_encoder_state_dict (Dict[str, torch.Tensor]): The state dictionary of the student's encoder.
+        teacher_encoder_state_dict (Dict[str, torch.Tensor]): The state dictionary of the teacher's encoder.
+        encoder_layer_map (List[List[int]]): A nested list where each inner list provides the teacher block indices
+                                             (1-indexed) to use for the corresponding encoder stage.
+    Raises:
+        ValueError: If there is a shape mismatch between the student and teacher layers.
+        KeyError: If a teacher key is not found in the teacher state dict.
+    """
+    # This regex matches keys like: "encoder.layers.<stage>.blocks.<block>.<...>"
+    block_pattern = re.compile(r"^(encoder\.layers\.)(\d+)(\.blocks\.)(\d+)(\..+)$")
+    
+    for s_key in list(student_encoder_state_dict.keys()):
+        m = block_pattern.match(s_key)
+        if m:
+            prefix, stage_str, block_prefix, s_block_str, suffix = m.groups()
+            stage_idx = int(stage_str)
+            s_block_idx = int(s_block_str)
+            # Use the mapping for this stage. The mapping is assumed to be 1-indexed.
+            teacher_block_idx = encoder_layer_map[stage_idx][s_block_idx] - 1
+
+            # Construct the corresponding teacher key.
+            t_key = f"{prefix}{stage_idx}{block_prefix}{teacher_block_idx}{suffix}"
+            if t_key in teacher_encoder_state_dict:
+                if student_encoder_state_dict[s_key].shape == teacher_encoder_state_dict[t_key].shape:
+                    student_encoder_state_dict[s_key] = teacher_encoder_state_dict[t_key]
+                else:
+                    raise ValueError(
+                        f"Shape mismatch for encoder key {s_key}: student shape {student_encoder_state_dict[s_key].shape} vs teacher key {t_key} shape {teacher_encoder_state_dict[t_key].shape}"
+                    )
+            else:
+                raise KeyError(f"Teacher key {t_key} not found in teacher encoder state dict")
 
 def copy_decoder_layers(
     student_decoder_state_dict: Dict[str, torch.Tensor], 
@@ -56,103 +107,6 @@ def copy_decoder_layers(
                 raise KeyError(f"Teacher key {t_key} not found in teacher state dict")
 
 
-def create_student(
-    teacher: VisionEncoderDecoderModel,
-    teacher_config: VisionEncoderDecoderConfig,
-    encoder_layer_map: List[List[int]],     # e.g. [[1,2], [1,2], [1,2,4,5,7,8,10,11,13,14], [1,2]] Teacher has form [2,2,14,2]
-    decoder_layer_map: List[int], # Teacher has 4 Layers
-    vocab_map=None,  # TODO: Ignore for now
-):
-    # TODO: Replace
-    # Name of the layer that has the word embeddings: lilt.embeddings.word_embeddings.weight
-    embed_key = "lilt.embeddings.word_embeddings.weight"
-    # embed_key = 'embeddings.word_embeddings.weight'
-    vocab_size = len(vocab_map) if vocab_map is not None else None
-
-    # initialize student
-    config = deepcopy(teacher_config)
-    config.encoder.depths = [len(x) for x in encoder_layer_map]
-    print("Encoder depths:", [len(x) for x in encoder_layer_map])
-    config.decoder.decoder_layers = len(decoder_layer_map)  # initially 12
-    # TODO:
-    # config.vocab_size = vocab_size or config.vocab_size  # initially 50265
-
-    config.decoder.hidden_size = teacher_config.decoder.hidden_size
-    config.decoder.encoder_hidden_size = config.encoder.hidden_size
-
-    student = VisionEncoderDecoderModel(config=config)
-
-    t_state_dict = teacher.state_dict()
-    t_encoder_state_dict = teacher.encoder.state_dict()
-    t_decoder_state_dict = teacher.decoder.state_dict()
-
-    # Temporarly delete embedding layer, otherwise we get size missmatch error
-    if vocab_size is not None:
-	# TODO:
-        temp_state_dict = deepcopy(t_state_dict)
-        del temp_state_dict[embed_key]
-        student.load_state_dict(temp_state_dict, strict=False)
-    else:
-        student.load_state_dict(t_state_dict, strict=False)
-    s_encoder_state_dict = student.encoder.state_dict()
-    s_decoder_state_dict = student.decoder.state_dict()
-
-    # copy each layer weights (check for state_dict with numbers)
-    # encoder
-    # for stage_no in range(len(encoder_layer_map)):
-    #     for s_encoder_layer_no, t_encoder_layer_no in enumerate(encoder_layer_map[stage_no]):
-    #         if t_encoder_layer_no is None:
-    #             continue
-    #         s_encoder_layer_no = str(s_encoder_layer_no)
-    #         t_encoder_layer_no = str(t_encoder_layer_no)
-    #         for s_k in s_encoder_state_dict.keys():
-    #             t_k = s_k.replace(f"layers.{stage_no}.blocks.{s_encoder_layer_no}", f"layers.{stage_no}.blocks.{t_encoder_layer_no}")
-    #             # print(f's_k: {s_k}, t_k:{t_k}')
-    #             if f"layers.{stage_no}.blocks.{s_encoder_layer_no}" in s_k:
-    #                 s_encoder_state_dict[s_k] = t_encoder_state_dict[t_k]
-
-    # decoder
-#     for s_decoder_layer_no, t_decoder_layer_no in enumerate(decoder_layer_map):
-#         if t_decoder_layer_no is None:
-#             continue
-# # decoder.layers.1
-#         s_decoder_layer_no = str(s_decoder_layer_no)
-#         t_decoder_layer_no = str(t_decoder_layer_no)
-#         for s_k in s_decoder_state_dict.keys():
-#             t_k = s_k.replace(f"decoder.layers.{s_decoder_layer_no}", f"decoder.layers.{t_decoder_layer_no}")
-#             # print(f's_k: {s_k}, t_k:{t_k}')
-#             if f"decoder.layers.{s_decoder_layer_no}" in s_k:
-#                 s_decoder_state_dict[s_k] = t_decoder_state_dict[t_k]
-    # Copy decoder weights using the regex-based mapping
-    copy_decoder_layers(s_decoder_state_dict, t_decoder_state_dict, decoder_layer_map)
-    # TODO:
-    # copy embedding weights
-    # if vocab_size is not None:
-    #     s_embed = s_state_dict[embed_key]
-    #     t_embed = t_state_dict[embed_key]
-    #     s_embed[: len(vocab_map)] = t_embed[vocab_map]
-    #     s_state_dict[embed_key] = s_embed
-
-    student.encoder.load_state_dict(s_encoder_state_dict, strict=True)
-    student.decoder.load_state_dict(s_decoder_state_dict, strict=True)
-    # for k in student.state_dict():
-    # 	print(k)
-
-
-    print("Teacher encoder hidden size:", teacher_config.encoder.hidden_size)
-    print("Student encoder hidden size:", student.encoder.config.hidden_size)
-    print("Teacher decoder hidden size:", teacher_config.decoder.hidden_size)
-    print("Student decoder hidden size:", student.decoder.config.hidden_size)
-
-
-    for s_key in s_decoder_state_dict:
-        if 'weight' in s_key:
-            print(f"Student {s_key}: {s_decoder_state_dict[s_key].shape}")
-            print(f"Teacher {s_key}: {t_decoder_state_dict[s_key].shape}")
-
-    return student
-
-
 def print_config(config, indent=0):
     """Recursively print the VisionEncoderDecoderConfig."""
     spacing = "  " * indent
@@ -167,6 +121,57 @@ def print_config(config, indent=0):
     else:
         print(f"{spacing}{config}")
 
+
+def create_student_small_with_encoder(
+    teacher: VisionEncoderDecoderModel,
+    teacher_config: VisionEncoderDecoderConfig,
+    encoder_layer_map: List[List[int]],  # e.g. [[1,2], [1,2], [1,2,4,5,7,8,10,11,13,14], [1,2]] (Teacher: [2,2,14,2])
+    decoder_layer_map: List[int],  # Maps teacher's decoder layers to the student (Teacher has 4 layers)
+) -> VisionEncoderDecoderModel:
+    """
+    Creates a smaller student model by selecting and copying layers from the teacher model.
+    This function does NOT perform distillation, it only initializes a reduced version of the model.
+
+    Args:
+        teacher (VisionEncoderDecoderModel): The pre-trained teacher model.
+        teacher_config (VisionEncoderDecoderConfig): The configuration of the teacher model.
+        encoder_layer_map (List[List[int]]): Mapping of teacher encoder layers to student layers.
+        decoder_layer_map (List[int]): Mapping of teacher decoder layers to student layers.
+
+    Returns:
+        VisionEncoderDecoderModel: A smaller student model with selected layers from the teacher.
+    """
+
+    # Initialize student model with a deep copy of the teacher's configuration
+    config = deepcopy(teacher_config)
+    config.decoder = deepcopy(teacher_config.decoder)
+    config.encoder = deepcopy(teacher_config.encoder)
+
+    # Reduce the number of decoder layers according to the provided mapping
+    config.decoder.decoder_layers = len(decoder_layer_map)
+    config.encoder.depths = [len(mapping) for mapping in encoder_layer_map]
+
+    student = VisionEncoderDecoderModel(config=config)
+
+    # Get state dictionaries for weight transfer
+    t_state_dict = teacher.state_dict()
+    t_encoder_state_dict = teacher.encoder.state_dict()
+    t_decoder_state_dict = teacher.decoder.state_dict()
+
+    # Load all available weights from teacher into student (some layers will be missing)
+    student.load_state_dict(t_state_dict, strict=False)
+
+    # Copy selected encoder block weights based on the provided mapping
+    s_encoder_state_dict = student.encoder.state_dict()
+    copy_encoder_layers(s_encoder_state_dict, t_encoder_state_dict, encoder_layer_map)
+    student.encoder.load_state_dict(s_encoder_state_dict, strict=True)
+
+    # Copy selected decoder weights based on the provided mapping
+    s_decoder_state_dict = student.decoder.state_dict()
+    copy_decoder_layers(s_decoder_state_dict, t_decoder_state_dict, decoder_layer_map)
+    student.decoder.load_state_dict(s_decoder_state_dict, strict=True)
+
+    return student
 
 def create_student_small(
     teacher: VisionEncoderDecoderModel,
