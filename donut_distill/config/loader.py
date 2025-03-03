@@ -22,3 +22,5 @@ def load_config(path: str):
     for key, value in config_data.items():
         if hasattr(CONFIG, key.upper()):
             setattr(CONFIG, key.upper(), value)
+        else:
+            print("Coultn't find key:", key.upper())

@@ -72,7 +72,7 @@ def calculate_loss_and_accuracy_distillation(
                 outputs.cross_attentions[student_layer_idx],
                 teacher_outputs.cross_attentions[teacher_layer_idx],
                 device,
-                weight=(1 / len(decoder_layer_map)) * alpha
+                weight=(1 / len(decoder_layer_map)) * delta
             )
 
             # Hidden States
