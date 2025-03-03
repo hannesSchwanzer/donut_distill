@@ -76,8 +76,8 @@ def copy_decoder_layers(
         KeyError: If a teacher layer key is not found in the teacher's state dictionary.
     """
     # This regex matches keys starting with "decoder.layers.<number>."
-    pattern = re.compile(r"^(decoder\.layers\.)(\d+)(\..+)$")
-    
+    pattern = re.compile(r"^(model\.decoder\.layers\.)(\d+)(\..+)$")
+
     # Iterate through each key in the student decoder's state dict
     for s_key in list(student_decoder_state_dict.keys()):
         m = pattern.match(s_key)  # Match keys following the decoder layer pattern
@@ -97,6 +97,7 @@ def copy_decoder_layers(
                 # Check if the shapes match before copying weights
                 if student_decoder_state_dict[s_key].shape == teacher_decoder_state_dict[t_key].shape:
                     student_decoder_state_dict[s_key] = teacher_decoder_state_dict[t_key]
+                    print("Copying", t_key, "to", s_key)
                 else:
                     raise ValueError(
                         f"Shape mismatch: Student layer {s_key} {student_decoder_state_dict[s_key].shape} "
@@ -105,6 +106,8 @@ def copy_decoder_layers(
             else:
                 # Raise an error if the teacher layer key is missing
                 raise KeyError(f"Teacher key {t_key} not found in teacher state dict")
+        else:
+            print("No match:", s_key)
 
 
 def print_config(config, indent=0):
