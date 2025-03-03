@@ -47,7 +47,7 @@ def prepare_model_and_processor(
     # Add special tokens if provided
     if special_tokens:
         add_tokens(model, processor, special_tokens)
-        donut_config.vocab_size = len(processor.tokenizer)  # Update vocabulary size
+        donut_config.decoder.vocab_size = len(processor.tokenizer)  # Update vocabulary size
 
     # Update image processing settings
     processor.image_processor.size = CONFIG.INPUT_SIZE[::-1]  # Reverse (height, width) format
@@ -67,9 +67,9 @@ def add_tokens(model: VisionEncoderDecoderModel, processor: DonutProcessor, list
         processor (DonutProcessor): The processor for handling input/output data.
         list_of_tokens (List[str]): List of special tokens to add.
     """
-    newly_added_num = processor.tokenizer.add_tokens(list_of_tokens)
-    if newly_added_num > 0:
-        model.decoder.resize_token_embeddings(len(processor.tokenizer))
+    processor.tokenizer.add_tokens(list_of_tokens)
+    model.decoder.resize_token_embeddings(len(processor.tokenizer))
+    model.config.vocab_size = len(processor.tokenizer)
 
 
 # TODO: Update function

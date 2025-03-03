@@ -173,6 +173,7 @@ def create_student_small_with_encoder(
 
     return student
 
+
 def create_student_small(
     teacher: VisionEncoderDecoderModel,
     teacher_config: VisionEncoderDecoderConfig,
@@ -227,33 +228,22 @@ def create_student_small(
 
 if __name__ == "__main__":
 
+    from donut_distill.models.helpers import prepare_model_and_processor
 
-    from transformers import (
-        DonutProcessor,
-        VisionEncoderDecoderModel,
-        VisionEncoderDecoderConfig,
-    )
-    model_dir = CONFIG.MODEL_ID
-    donut_config: VisionEncoderDecoderConfig = VisionEncoderDecoderConfig.from_pretrained(model_dir)
-    donut_config.encoder.image_size = CONFIG.INPUT_SIZE
-    donut_config.decoder.max_length = CONFIG.MAX_LENGTH
-
-    processor: DonutProcessor = DonutProcessor.from_pretrained(model_dir)
-    model: VisionEncoderDecoderModel = VisionEncoderDecoderModel.from_pretrained(
-        model_dir, config=donut_config
+    model, processor, donut_config = prepare_model_and_processor(
+        special_tokens=["<yes/>", "<no/>"], return_config=True, load_teacher=CONFIG.DISTILL
     )
 
-    processor.image_processor.size = CONFIG.INPUT_SIZE[::-1]
-    processor.image_processor.do_align_long_axis = False
-
-    student_model = create_student(
+    student_model = create_student_small(
         teacher=model,
         teacher_config=donut_config,
         encoder_layer_map=CONFIG.ENCODER_LAYER_MAP,
         decoder_layer_map=CONFIG.DECODER_LAYER_MAP,
     )
 
-    for key in student_model.decoder.state_dict().keys():
-        print(key)
+    from pathlib import Path
+    model_dir = Path(CONFIG.RESULT_PATH) / "student_untrained"
 
-
+    student_model.save_pretrained(model_dir)
+    processor.save_pretrained(model_dir)
+    donut_config.save_pretrained(model_dir)

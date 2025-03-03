@@ -158,13 +158,16 @@ def train():
             # highest_gradient = check_gradients(model=student_model if CONFIG.DISTILL else model)
 
             if (i + 1) % CONFIG.ACCUMULATION_STEPS == 0:
+                # Unscale gradients before clipping
+                scaler.unscale_(optimizer)
+
                 torch.nn.utils.clip_grad_norm_(
                     student_model.parameters() if CONFIG.DISTILL else model.parameters(), CONFIG.GRADIENT_CLIP_VAL
                 )
                 scaler.step(optimizer)
                 scaler.update()
-                optimizer.zero_grad()
                 scheduler.step()
+                optimizer.zero_grad()
 
             # Log training metrics
             if steps % CONFIG.LOG_INTERVAL == 0:
