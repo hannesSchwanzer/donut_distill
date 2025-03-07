@@ -1,13 +1,16 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
-from typing import List
+from typing import Dict, List
 from transformers.modeling_outputs import Seq2SeqLMOutput
 
 # Define loss functions
 mse_loss_fn = nn.MSELoss()
 ce_loss_fn = nn.CrossEntropyLoss()
 kl_loss_fn = nn.KLDivLoss(reduction="batchmean")
+
+# Doesn't change for student, because only blocks from stages gets removed (not whole stages)
+ENCODER_STAGES = 4
 
 
 def calculate_loss_and_accuracy_distillation(
@@ -21,6 +24,8 @@ def calculate_loss_and_accuracy_distillation(
     beta: float = 1,
     gamma: float = 1,
     delta: float = 1,
+    encoder_weight: float = 1,
+    decoder_weight: float = 1,
 ) -> Dict[str, torch.Tensor | float]:
     """
     Calculate the distillation loss between teacher and student models.
@@ -55,6 +60,10 @@ def calculate_loss_and_accuracy_distillation(
     else:
         gamma = 1
 
+    # Normalize encoder and decoder weights
+    encoder_weight *= 1 / (encoder_weight + decoder_weight)
+    decoder_weight *= 1 / (encoder_weight + decoder_weight)
+
     total_loss = 0.0
     self_attention_loss = 0.0
     cross_attention_loss = 0.0
@@ -63,29 +72,24 @@ def calculate_loss_and_accuracy_distillation(
 
     # Phase 1: Hidden states & attentions distillation
     if is_first_distillation_phase or is_1phase_distillation:
-        for student_layer_idx, teacher_layer_idx in enumerate(decoder_layer_map):
+        # Distill Encoder
+        encoder_self_attention_weight = encoder_weight * (1 / ENCODER_STAGES) * alpha
+        encoder_hidden_state_weight = encoder_weight * (1 / (ENCODER_STAGES + 1)) * beta
+        for stage_idx in range(ENCODER_STAGES):
             # Self-attention
             self_attention_loss += safe_mse_loss(
-                outputs.decoder_attentions[student_layer_idx],
-                teacher_outputs.decoder_attentions[teacher_layer_idx],
+                outputs.encoder_attentions[stage_idx],
+                teacher_outputs.encoder_attentions[stage_idx],
                 device,
-                weight=(1 / len(decoder_layer_map)) * alpha,
-            )
-
-            # Cross-attention
-            cross_attention_loss += safe_mse_loss(
-                outputs.cross_attentions[student_layer_idx],
-                teacher_outputs.cross_attentions[teacher_layer_idx],
-                device,
-                weight=(1 / len(decoder_layer_map)) * delta,
+                weight=encoder_self_attention_weight,
             )
 
             # Hidden States
             hidden_state_loss += safe_mse_loss(
-                outputs.decoder_hidden_states[student_layer_idx + 1],
-                teacher_outputs.decoder_hidden_states[teacher_layer_idx + 1],
+                outputs.encoder_hidden_states[stage_idx + 1],
+                teacher_outputs.encoder_hidden_states[stage_idx + 1],
                 device,
-                weight=(1 / (len(decoder_layer_map) + 1)) * beta,
+                weight=encoder_hidden_state_weight,
             )
 
         # Distill embedding layer
@@ -93,12 +97,49 @@ def calculate_loss_and_accuracy_distillation(
             outputs.decoder_hidden_states[0],
             teacher_outputs.decoder_hidden_states[0],
             device,
-            weight=(1 / (len(decoder_layer_map) + 1)) * beta,
+            weight=encoder_hidden_state_weight,
+        )
+
+        # Distill Decoder
+        decoder_self_attention_weight = decoder_weight * (1 / len(decoder_layer_map)) * alpha
+        decoder_cross_attention_weight = decoder_weight * (1 / len(decoder_layer_map)) * delta
+        decoder_hidden_state_weight = decoder_weight * (1 / (len(decoder_layer_map) + 1)) * beta
+        for student_layer_idx, teacher_layer_idx in enumerate(decoder_layer_map):
+            # Self-attention
+            self_attention_loss += safe_mse_loss(
+                outputs.decoder_attentions[student_layer_idx],
+                teacher_outputs.decoder_attentions[teacher_layer_idx],
+                device,
+                weight=decoder_self_attention_weight,
+            )
+
+            # Cross-attention
+            cross_attention_loss += safe_mse_loss(
+                outputs.cross_attentions[student_layer_idx],
+                teacher_outputs.cross_attentions[teacher_layer_idx],
+                device,
+                weight=decoder_cross_attention_weight,
+            )
+
+            # Hidden States
+            hidden_state_loss += safe_mse_loss(
+                outputs.decoder_hidden_states[student_layer_idx + 1],
+                teacher_outputs.decoder_hidden_states[teacher_layer_idx + 1],
+                device,
+                weight=decoder_hidden_state_weight,
+            )
+
+        # Distill embedding layer
+        hidden_state_loss += safe_mse_loss(
+            outputs.decoder_hidden_states[0],
+            teacher_outputs.decoder_hidden_states[0],
+            device,
+            weight=decoder_self_attention_weight,
         )
 
     # Phase 2: Logit-based distillation (KL divergence)
     if (not is_first_distillation_phase) or is_1phase_distillation:
-        epsilon = 1e-10
+        epsilon = 1e-10 # in case one logit is 0
         logits: torch.Tensor = outputs.logits
         logit_loss = gamma * kl_loss_fn(
             F.log_softmax(logits + epsilon, dim=-1),

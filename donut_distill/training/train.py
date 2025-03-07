@@ -8,7 +8,7 @@ from transformers import GenerationConfig
 
 from donut_distill.config.loader import load_config
 from donut_distill.models.helpers import prepare_model_and_processor
-from donut_distill.models.student import create_student_small
+from donut_distill.models.student import create_student_small_with_encoder
 from donut_distill.training.utils import prepare_dataloader, prepare_optimizer_and_scheduler
 from donut_distill.training.losses import calculate_loss_and_accuracy_distillation
 from donut_distill.evaluation.evaluate import evaluate_docvqa
@@ -62,7 +62,7 @@ def train():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     if CONFIG.DISTILL:
-        student_model = create_student_small(
+        student_model = create_student_small_with_encoder(
             teacher=model,
             teacher_config=donut_config,
             encoder_layer_map=CONFIG.ENCODER_LAYER_MAP,
@@ -79,16 +79,30 @@ def train():
     )
 
     # Logger
-    wandb.init(
-        project="donut-distill-docvqa",
-        name="docvqa",
-        config={
+    log_config = {
             "learning_rate": CONFIG.LR,
             "architecture": "Donut",
             "dataset": "docvqa",
             "epochs": CONFIG.MAX_EPOCHS,
             "gradient_clip_val": CONFIG.GRADIENT_CLIP_VAL,
-        },
+        }
+    if CONFIG.DISTILL:
+        log_config.update({
+            "teacher_path": CONFIG.TEACHER_MODEL_PATH,
+            "alpha": CONFIG.ALPHA,
+            "beta": CONFIG.BETA,
+            "gamma": CONFIG.GAMMA,
+            "delta": CONFIG.DELTA,
+            "encoder_weight": CONFIG.ENCODER_WEIGHT,
+            "decoder_weight": CONFIG.DECODER_WEIGHT,
+            "encoder_layer_map": CONFIG.ENCODER_LAYER_MAP,
+            "decoder_layer_map": CONFIG.DECODER_LAYER_MAP,
+        })
+
+    wandb.init(
+        project="donut-distill-docvqa",
+        name="docvqa",
+        config=log_config,
     )
 
     # Create directories for model and processor
@@ -101,6 +115,28 @@ def train():
     num_batches_per_epoch = len(train_dataloader)
     val_check_interval_batches = max(
         1, int(num_batches_per_epoch * CONFIG.VAL_CHECK_INTERVAL)
+    )
+
+    # Validate before training
+    if CONFIG.DISTILL:
+        student_model.eval()
+    else:
+        model.eval()
+
+    with torch.autocast(device_type="cuda"):
+        eval_results = evaluate_docvqa(
+            model=student_model if CONFIG.DISTILL else model,
+            processor=processor,
+            device=device,
+            val_dataloader=val_dataloader,
+            generation_config=GenerationConfig(
+                early_stopping=True,
+                num_beams=1,
+            ),
+        )
+    wandb.log(
+        eval_results,
+        step=steps,
     )
 
     for epoch in range(CONFIG.MAX_EPOCHS):
@@ -146,6 +182,8 @@ def train():
                         beta=CONFIG.BETA,
                         gamma=CONFIG.GAMMA,
                         delta=CONFIG.DELTA,
+                        encoder_weight=CONFIG.ENCODER_WEIGHT,
+                        decoder_weight=CONFIG.DECODER_WEIGHT,
                     )
                     loss = losses['total_loss']
 
@@ -201,28 +239,16 @@ def train():
                 torch.cuda.empty_cache()
 
                 with torch.autocast(device_type="cuda"):
-                    if CONFIG.DISTILL:
-                        eval_results = evaluate_docvqa(
-                            model=student_model,
-                            processor=processor,
-                            device=device,
-                            val_dataloader=val_dataloader,
-                            generation_config=GenerationConfig(
-                                early_stopping=True,
-                                num_beams=1,
-                            ),
-                        )
-                    else:
-                        eval_results = evaluate_docvqa(
-                            model=model,
-                            processor=processor,
-                            device=device,
-                            val_dataloader=val_dataloader,
-                            generation_config=GenerationConfig(
-                                early_stopping=True,
-                                num_beams=1,
-                            ),
-                        )
+                    eval_results = evaluate_docvqa(
+                        model=student_model if CONFIG.DISTILL else model,
+                        processor=processor,
+                        device=device,
+                        val_dataloader=val_dataloader,
+                        generation_config=GenerationConfig(
+                            early_stopping=True,
+                            num_beams=1,
+                        ),
+                    )
 
                 eval_results.update({"epoch": epoch})
 

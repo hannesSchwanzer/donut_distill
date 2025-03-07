@@ -37,9 +37,10 @@ limit_val_batches: 1
 ### Distillation parameters ###
 teacher_model_path: 'result/docvqa/best_model'
 decoder_layer_map: [0, 2, 3]
-encoder_layer_map: []
+encoder_layer_map: [[0,1], [0,1], [0,1,2,3,4,5,6,7,8,9,10,11,12,13], [0,1]]
 alpha: 1 # Weight for self-attention loss.
 beta: 1 # Weight for hidden states loss.
 gamma: 1 # Weight for logit-based loss.
 delta: 1 # Weight for cross-attention loss.
-
+encoder_weight: 1
+decoder_weight: 1

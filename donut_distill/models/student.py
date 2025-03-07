@@ -43,20 +43,22 @@ def copy_encoder_layers(
             prefix, stage_str, block_prefix, s_block_str, suffix = m.groups()
             stage_idx = int(stage_str)
             s_block_idx = int(s_block_str)
-            # Use the mapping for this stage. The mapping is assumed to be 1-indexed.
-            teacher_block_idx = encoder_layer_map[stage_idx][s_block_idx] - 1
 
             # Construct the corresponding teacher key.
-            t_key = f"{prefix}{stage_idx}{block_prefix}{teacher_block_idx}{suffix}"
+            t_layer_idx = encoder_layer_map[stage_idx][s_block_idx]
+            t_key = f"{prefix}{stage_idx}{block_prefix}{t_layer_idx}{suffix}"
             if t_key in teacher_encoder_state_dict:
                 if student_encoder_state_dict[s_key].shape == teacher_encoder_state_dict[t_key].shape:
                     student_encoder_state_dict[s_key] = teacher_encoder_state_dict[t_key]
+                    print("Copying", t_key, "to", s_key)
                 else:
                     raise ValueError(
                         f"Shape mismatch for encoder key {s_key}: student shape {student_encoder_state_dict[s_key].shape} vs teacher key {t_key} shape {teacher_encoder_state_dict[t_key].shape}"
                     )
             else:
                 raise KeyError(f"Teacher key {t_key} not found in teacher encoder state dict")
+        else:
+            print("No match:", s_key)
 
 def copy_decoder_layers(
     student_decoder_state_dict: Dict[str, torch.Tensor], 

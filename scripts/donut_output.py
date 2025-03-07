@@ -1,8 +1,7 @@
 import torch
 import donut_distill.config.config as CONFIG
-from donut_distill.models.helpers import add_tokens
 from donut_distill.data.donut_dataset import DonutDataset
-from donut_distill.models.student import create_student_small
+from donut_distill.models.student import create_student_small_with_encoder
 from torch.utils.data import DataLoader
 from transformers import (
     DonutProcessor,
@@ -24,11 +23,11 @@ processor.image_processor.do_align_long_axis = False
 
 # add_tokens(model, processor, ["<yes/>", "<no/>"])
 
-model = create_student_small(
+model = create_student_small_with_encoder(
     teacher=model,
     teacher_config=donut_config,
-    encoder_layer_map=[[1,2], [1,2], [1,2], [1,2]],
-    decoder_layer_map=[1,2,3,4])
+    encoder_layer_map=[[0,1], [0,1], [0,1,6,7,12,13], [0,1]],
+    decoder_layer_map=[0,1,2,3])
 
 train_dataset = DonutDataset(
     dataset_name_or_path="./preprocessed_dataset_docvqa_small/",
