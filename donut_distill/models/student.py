@@ -249,4 +249,3 @@ if __name__ == "__main__":
 
     student_model.save_pretrained(model_dir)
     processor.save_pretrained(model_dir)
-    donut_config.save_pretrained(model_dir)

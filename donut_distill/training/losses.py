@@ -7,7 +7,8 @@ from transformers.modeling_outputs import Seq2SeqLMOutput
 # Define loss functions
 mse_loss_fn = nn.MSELoss()
 ce_loss_fn = nn.CrossEntropyLoss()
-kl_loss_fn = nn.KLDivLoss(reduction='batchmean')
+kl_loss_fn = nn.KLDivLoss(reduction="batchmean")
+
 
 def calculate_loss_and_accuracy_distillation(
     outputs: Seq2SeqLMOutput,
@@ -19,8 +20,8 @@ def calculate_loss_and_accuracy_distillation(
     alpha: float = 1,
     beta: float = 1,
     gamma: float = 1,
-    delta: float = 1
-) -> torch.Tensor:
+    delta: float = 1,
+) -> Dict[str, torch.Tensor | float]:
     """
     Calculate the distillation loss between teacher and student models.
 
@@ -55,58 +56,72 @@ def calculate_loss_and_accuracy_distillation(
         gamma = 1
 
     total_loss = 0.0
+    self_attention_loss = 0.0
+    cross_attention_loss = 0.0
+    hidden_state_loss = 0.0
+    logit_loss = 0.0
 
     # Phase 1: Hidden states & attentions distillation
     if is_first_distillation_phase or is_1phase_distillation:
         for student_layer_idx, teacher_layer_idx in enumerate(decoder_layer_map):
             # Self-attention
-            total_loss += safe_mse_loss(
+            self_attention_loss += safe_mse_loss(
                 outputs.decoder_attentions[student_layer_idx],
                 teacher_outputs.decoder_attentions[teacher_layer_idx],
                 device,
-                weight=(1 / len(decoder_layer_map)) * alpha
+                weight=(1 / len(decoder_layer_map)) * alpha,
             )
 
             # Cross-attention
-            total_loss += safe_mse_loss(
+            cross_attention_loss += safe_mse_loss(
                 outputs.cross_attentions[student_layer_idx],
                 teacher_outputs.cross_attentions[teacher_layer_idx],
                 device,
-                weight=(1 / len(decoder_layer_map)) * delta
+                weight=(1 / len(decoder_layer_map)) * delta,
             )
 
             # Hidden States
-            total_loss += safe_mse_loss(
-                outputs.decoder_hidden_states[student_layer_idx+1],
-                teacher_outputs.decoder_hidden_states[teacher_layer_idx+1],
+            hidden_state_loss += safe_mse_loss(
+                outputs.decoder_hidden_states[student_layer_idx + 1],
+                teacher_outputs.decoder_hidden_states[teacher_layer_idx + 1],
                 device,
-                weight=(1 / (len(decoder_layer_map) + 1)) * beta
+                weight=(1 / (len(decoder_layer_map) + 1)) * beta,
             )
 
         # Distill embedding layer
-        total_loss += safe_mse_loss(
+        hidden_state_loss += safe_mse_loss(
             outputs.decoder_hidden_states[0],
             teacher_outputs.decoder_hidden_states[0],
             device,
-            weight=(1 / (len(decoder_layer_map) + 1)) * beta
+            weight=(1 / (len(decoder_layer_map) + 1)) * beta,
         )
 
     # Phase 2: Logit-based distillation (KL divergence)
     if (not is_first_distillation_phase) or is_1phase_distillation:
         epsilon = 1e-10
         logits: torch.Tensor = outputs.logits
-        loss_val = gamma * kl_loss_fn(
+        logit_loss = gamma * kl_loss_fn(
             F.log_softmax(logits + epsilon, dim=-1),
-            F.softmax(teacher_outputs.logits + epsilon, dim=-1)
+            F.softmax(teacher_outputs.logits + epsilon, dim=-1),
         ).to(device)
-        total_loss += loss_val
 
-    return total_loss
+    total_loss = self_attention_loss + cross_attention_loss + hidden_state_loss + logit_loss
+    
+    return {
+        "total_loss": total_loss,
+        "losses/self_attention_loss": self_attention_loss.item(),
+        "losses/cross_attention_loss": cross_attention_loss.item(),
+        "losses/hidden_state_loss": hidden_state_loss.item(),
+        "losses/logit_loss": logit_loss.item(),
+    }
 
-def safe_mse_loss(output: torch.Tensor, target: torch.Tensor, device, weight: float = 1.0) -> torch.Tensor:
+
+def safe_mse_loss(
+    output: torch.Tensor, target: torch.Tensor, device, weight: float = 1.0
+) -> torch.Tensor:
     """
     Computes MSE loss and handles NaN or Inf values.
-    
+
     Args:
         output (torch.Tensor): The output tensor from the student model.
         target (torch.Tensor): The corresponding target tensor from the teacher model.

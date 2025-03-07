@@ -135,7 +135,7 @@ def train():
                         output_attentions=True,
                         output_hidden_states=True,
                     )
-                    loss = calculate_loss_and_accuracy_distillation(
+                    losses = calculate_loss_and_accuracy_distillation(
                         outputs=student_outputs, 
                         teacher_outputs=teacher_outputs,
                         is_first_distillation_phase=True,
@@ -147,6 +147,7 @@ def train():
                         gamma=CONFIG.GAMMA,
                         delta=CONFIG.DELTA,
                     )
+                    loss = losses['total_loss']
 
                 else:
                     outputs = model(
@@ -171,15 +172,21 @@ def train():
 
             # Log training metrics
             if steps % CONFIG.LOG_INTERVAL == 0:
-                wandb.log(
-                    {
+                log_data = {
                         "train/loss": loss.item(),
                         "gpu/memory_allocated": torch.cuda.memory_allocated(),
                         "gpu/memory_reserved": torch.cuda.memory_reserved(),
                         "lr": optimizer.param_groups[0]["lr"],
                         "epoch": epoch,
                         # "highest_gradient": highest_gradient,
-                    },
+                    }
+                if CONFIG.DISTILL:
+                    log_data.update(
+                        # Filter out total loss (gets added anyway and is a tensor)
+                        {k: v for k, v in losses.items() if k != "total_loss"}
+                    )
+                wandb.log(
+                    log_data,
                     step=steps,
                 )
 
