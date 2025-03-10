@@ -3,7 +3,6 @@ from os import listdir, path
 from pathlib import Path
 import shutil
 from tqdm import tqdm
-from datasets import DatasetDict, load_dataset
 from typing import Callable, Dict, List, Optional, Union
 
 def preprocess_annotations_links_funsd(annotation_path: str) -> Dict[str, List[Dict[str, Union[str, List[str]]]]]:
@@ -213,8 +212,8 @@ def preprocess_docvqa(
     for annotation_file_name in listdir(annotations_path):
         annotation_file_path = path.join(annotations_path, annotation_file_name)
         
-        if path.isdir(annotation_file_path):
-            continue  # Skip directories
+        if path.isdir(annotation_file_path) or not annotation_file_path.endswith(".json"):
+            continue
 
         # Load annotation file
         with open(annotation_file_path, "r") as annotation_file:
@@ -280,7 +279,7 @@ if __name__ == "__main__":
     # preprocess_directory_funsd(train_directory, "preprocessed_dataset/test", process_annotation_fn)
     # preprocess_directory_funsd(train_directory, "preprocessed_dataset/train", process_annotation_fn)
 
-    preprocess_docvqa("docvqa/queries", "docvqa", "preprocessed_dataset_docvqa_small", 50, 10)
+    # preprocess_docvqa("docvqa/queries", "docvqa", "preprocessed_dataset_docvqa_small", 50, 10)
+    preprocess_docvqa("docvqa/queries", "docvqa", "preprocessed_dataset_docvqa")
 
-    # create_subset("preprocessed_dataset_docvqa", "preprocessed_dataset_docvqa_small", 50, 10)
 

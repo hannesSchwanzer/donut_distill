@@ -7,7 +7,25 @@ setup(
     author_email="hannes.schwanzer@gmail.com",
     url="https://github.com/hannesSchwanzer/donut_funsd",
     packages=find_packages(),
-    install_requires=[  # TODO: Update
+    install_requires=[
+        "anls",
+        "datasets",
+        "matplotlib",
+        "nltk",
+        "numpy",
+        "Pillow",
+        "Pillow",
+        "pytorch_lightning",
+        "PyYAML",
+        "PyYAML",
+        "sentencepiece",
+        "setuptools",
+        "torch",
+        "torchvision",
+        "tqdm",
+        "transformers",
+        "wandb",
     ],
-    python_requires=">=3.6", # TODO: Check which version
+    python_requires=">=3.11.2",
 )
+
