@@ -106,9 +106,8 @@ def prepare_optimizer_and_scheduler(model: VisionEncoderDecoderModel, len_traini
     # Compute the total number of iterations based on epochs and dataset size
     if int(CONFIG.MAX_EPOCHS) > 0:
         max_iter = (CONFIG.MAX_EPOCHS * len_trainingsdata) / (
-            CONFIG.TRAIN_BATCH_SIZES * torch.cuda.device_count() * CONFIG.NUM_NODES
+            CONFIG.TRAIN_BATCH_SIZES * torch.cuda.device_count() * CONFIG.NUM_NODES * CONFIG.ACCUMULATION_STEPS
         )
-        max_iter = max_iter // CONFIG.ACCUMULATION_STEPS  # Adjust for gradient accumulation
 
     # If max training steps are defined, ensure we do not exceed them
     if int(CONFIG.MAX_STEPS) > 0:
@@ -121,7 +120,7 @@ def prepare_optimizer_and_scheduler(model: VisionEncoderDecoderModel, len_traini
     assert max_iter is not None, "max_iter must be defined before creating the scheduler."
 
     # Adjust warmup steps for gradient accumulation
-    warmup_steps = CONFIG.WARMUP_STEPS // CONFIG.ACCUMULATION_STEPS
+    warmup_steps = CONFIG.WARMUP_STEPS
 
     scheduler = cosine_scheduler(optimizer, max_iter, warmup_steps)
     

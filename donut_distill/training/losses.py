@@ -73,69 +73,78 @@ def calculate_loss_and_accuracy_distillation(
     # Phase 1: Hidden states & attentions distillation
     if is_first_distillation_phase or is_1phase_distillation:
         # Distill Encoder
-        encoder_self_attention_weight = encoder_weight * (1 / ENCODER_STAGES) * alpha
-        encoder_hidden_state_weight = encoder_weight * (1 / (ENCODER_STAGES + 1)) * beta
-        for stage_idx in range(ENCODER_STAGES):
-            # Self-attention
-            self_attention_loss += safe_mse_loss(
-                outputs.encoder_attentions[stage_idx],
-                teacher_outputs.encoder_attentions[stage_idx],
-                device,
-                weight=encoder_self_attention_weight,
-            )
+        if encoder_weight != 0:
+            encoder_self_attention_weight = encoder_weight * (1 / ENCODER_STAGES) * alpha
+            encoder_hidden_state_weight = encoder_weight * (1 / (ENCODER_STAGES + 1)) * beta
+            for stage_idx in range(ENCODER_STAGES):
+                # Self-attention
+                if encoder_self_attention_weight != 0:
+                    self_attention_loss += safe_mse_loss(
+                        outputs.encoder_attentions[stage_idx],
+                        teacher_outputs.encoder_attentions[stage_idx],
+                        device,
+                        weight=encoder_self_attention_weight,
+                    )
 
-            # Hidden States
-            hidden_state_loss += safe_mse_loss(
-                outputs.encoder_hidden_states[stage_idx + 1],
-                teacher_outputs.encoder_hidden_states[stage_idx + 1],
-                device,
-                weight=encoder_hidden_state_weight,
-            )
+                # Hidden States
+                if encoder_hidden_state_weight != 0:
+                    hidden_state_loss += safe_mse_loss(
+                        outputs.encoder_hidden_states[stage_idx + 1],
+                        teacher_outputs.encoder_hidden_states[stage_idx + 1],
+                        device,
+                        weight=encoder_hidden_state_weight,
+                    )
 
-        # Distill embedding layer
-        hidden_state_loss += safe_mse_loss(
-            outputs.decoder_hidden_states[0],
-            teacher_outputs.decoder_hidden_states[0],
-            device,
-            weight=encoder_hidden_state_weight,
-        )
+            # Distill embedding layer
+            if encoder_hidden_state_weight != 0:
+                hidden_state_loss += safe_mse_loss(
+                    outputs.decoder_hidden_states[0],
+                    teacher_outputs.decoder_hidden_states[0],
+                    device,
+                    weight=encoder_hidden_state_weight,
+                )
 
         # Distill Decoder
-        decoder_self_attention_weight = decoder_weight * (1 / len(decoder_layer_map)) * alpha
-        decoder_cross_attention_weight = decoder_weight * (1 / len(decoder_layer_map)) * delta
-        decoder_hidden_state_weight = decoder_weight * (1 / (len(decoder_layer_map) + 1)) * beta
-        for student_layer_idx, teacher_layer_idx in enumerate(decoder_layer_map):
-            # Self-attention
-            self_attention_loss += safe_mse_loss(
-                outputs.decoder_attentions[student_layer_idx],
-                teacher_outputs.decoder_attentions[teacher_layer_idx],
-                device,
-                weight=decoder_self_attention_weight,
-            )
+        if decoder_weight != 0:
+            decoder_self_attention_weight = decoder_weight * (1 / len(decoder_layer_map)) * alpha
+            decoder_cross_attention_weight = decoder_weight * (1 / len(decoder_layer_map)) * delta
+            decoder_hidden_state_weight = decoder_weight * (1 / (len(decoder_layer_map) + 1)) * beta
+            for student_layer_idx, teacher_layer_idx in enumerate(decoder_layer_map):
+                # Self-attention
+                if decoder_self_attention_weight != 0:
+                    self_attention_loss += safe_mse_loss(
+                        outputs.decoder_attentions[student_layer_idx],
+                        teacher_outputs.decoder_attentions[teacher_layer_idx],
+                        device,
+                        weight=decoder_self_attention_weight,
+                    )
 
-            # Cross-attention
-            cross_attention_loss += safe_mse_loss(
-                outputs.cross_attentions[student_layer_idx],
-                teacher_outputs.cross_attentions[teacher_layer_idx],
-                device,
-                weight=decoder_cross_attention_weight,
-            )
+                # Cross-attention
+                if decoder_cross_attention_weight != 0:
+                    cross_attention_loss += safe_mse_loss(
+                        outputs.cross_attentions[student_layer_idx],
+                        teacher_outputs.cross_attentions[teacher_layer_idx],
+                        device,
+                        weight=decoder_cross_attention_weight,
+                    )
 
-            # Hidden States
-            hidden_state_loss += safe_mse_loss(
-                outputs.decoder_hidden_states[student_layer_idx + 1],
-                teacher_outputs.decoder_hidden_states[teacher_layer_idx + 1],
-                device,
-                weight=decoder_hidden_state_weight,
-            )
+                # Hidden States
+                if decoder_hidden_state_weight != 0:
+                    hidden_state_loss += safe_mse_loss(
+                        outputs.decoder_hidden_states[student_layer_idx + 1],
+                        teacher_outputs.decoder_hidden_states[teacher_layer_idx + 1],
+                        device,
+                        weight=decoder_hidden_state_weight,
+                    )
 
-        # Distill embedding layer
-        hidden_state_loss += safe_mse_loss(
-            outputs.decoder_hidden_states[0],
-            teacher_outputs.decoder_hidden_states[0],
-            device,
-            weight=decoder_self_attention_weight,
-        )
+            # Distill embedding layer
+            if decoder_hidden_state_weight != 0:
+                hidden_state_loss += safe_mse_loss(
+                    outputs.decoder_hidden_states[0],
+                    teacher_outputs.decoder_hidden_states[0],
+                    device,
+                    weight=decoder_self_attention_weight,
+                )
 
     # Phase 2: Logit-based distillation (KL divergence)
     if (not is_first_distillation_phase) or is_1phase_distillation:

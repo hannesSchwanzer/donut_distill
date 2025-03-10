@@ -101,7 +101,7 @@ def train():
 
     wandb.init(
         project="donut-distill-docvqa",
-        name="docvqa",
+        name=CONFIG.WANDB_NAME,
         config=log_config,
     )
 

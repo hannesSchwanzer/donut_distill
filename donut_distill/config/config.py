@@ -3,6 +3,7 @@ DISTILL = False
 RESULT_PATH= "./result/docvqa"
 VERBOSE= True
 LOG_INTERVAL = 10 # After how many steps the logger should log
+WANDB_NAME = "Finetune decoder"
 
 ''' transformer parameters '''
 MODEL_ID            = 'naver-clova-ix/donut-base'

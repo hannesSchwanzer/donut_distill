@@ -3,6 +3,7 @@ distill: True
 result_path: "./result/docvqa"
 verbose: True
 log_interval: 10 # After how many steps the logger should log
+wandb_name: "Distill decoder"
 
 ### transformer parameters ###
 model_id: 'naver-clova-ix/donut-base'
