@@ -207,9 +207,10 @@ def train():
                 scaler.update()
                 scheduler.step()
                 optimizer.zero_grad()
+                steps += 1
 
             # Log training metrics
-            if steps % CONFIG.LOG_INTERVAL == 0:
+            if i % CONFIG.LOG_INTERVAL == 0:
                 log_data = {
                         "train/loss": loss.item(),
                         "gpu/memory_allocated": torch.cuda.memory_allocated(),
@@ -229,7 +230,6 @@ def train():
                 )
 
             total_loss += loss.item()
-            steps += 1
 
             if (i + 1) % val_check_interval_batches == 0:
                 if CONFIG.DISTILL:
