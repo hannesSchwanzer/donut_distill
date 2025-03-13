@@ -51,6 +51,9 @@ def prepare_dataloader(model: VisionEncoderDecoderModel, processor: DonutProcess
         batch_size=CONFIG.TRAIN_BATCH_SIZES,
         shuffle=True,
         num_workers=CONFIG.NUM_WORKERS,
+        pin_memory=True,
+        prefetch_factor=2,
+        persistent_workers=True,
     )
     val_dataloader = DataLoader(
         val_dataset,

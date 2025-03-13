@@ -113,7 +113,7 @@ def calculate_loss_and_accuracy_distillation(
         # Distill Decoder
         if decoder_weight != 0:
             decoder_self_attention_weight = decoder_weight * (1 / len(decoder_layer_map)) * alpha
-            decoder_cross_attention_weight = decoder_weight * (1 / len(decoder_layer_map)) * delta
+            decoder_cross_attention_weight = (1 / len(decoder_layer_map)) * delta
             decoder_hidden_state_weight = decoder_weight * (1 / (len(decoder_layer_map) + 1)) * beta
             for student_layer_idx, teacher_layer_idx in enumerate(decoder_layer_map):
                 # Self-attention
