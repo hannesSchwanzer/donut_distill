@@ -69,6 +69,14 @@ def train():
             decoder_layer_map=CONFIG.DECODER_LAYER_MAP,
         )
         student_model.to(device)
+    elif CONFIG.USE_STUDENT_WITHOUT_DISTILLING:
+        # Overrite model with student
+        model = create_student_small_with_encoder(
+            teacher=model,
+            teacher_config=donut_config,
+            encoder_layer_map=CONFIG.ENCODER_LAYER_MAP,
+            decoder_layer_map=CONFIG.DECODER_LAYER_MAP,
+        )
 
     model.to(device)
 
