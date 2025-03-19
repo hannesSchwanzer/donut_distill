@@ -4,15 +4,15 @@ RESULT_PATH= "./result/docvqa"
 VERBOSE= True
 LOG_INTERVAL = 10 # After how many steps the logger should log
 WANDB_NAME = "Finetune decoder"
-USE_STUDENT_WITHOUT_DISTILLING = False # When finetuning student
+USE_STUDENT_WITHOUT_DISTILLING = False # When finetuning student (Creates student model and trains it like teacher)
 
 ''' transformer parameters '''
 MODEL_ID            = 'naver-clova-ix/donut-base'
-MAX_LENGTH          = 128
-INPUT_SIZE= [1280, 960] # when the input resolution differs from the pre-training setting, some weights will be newly initialized (but the model training would be okay)
+MAX_LENGTH          = 128 # Decoder Token length
+INPUT_SIZE= [1280, 960] # image input size
 
 ''' Dataset parameters '''
-DATASET= "./preprocessed_dataset_docvqa/" # loading datasets (from moldehub or path)
+DATASET= "./preprocessed_dataset_docvqa/"
 DATASET_NAME_TRAINING="train"
 DATASET_NAME_VALIDATE="validation"
 SORT_JSON_KEY= False
@@ -27,7 +27,7 @@ GRADIENT_CLIP_VAL= 0.25
 NUM_NODES= 1
 NUM_WORKERS= 0
 
-WARMUP_STEPS= 10000 # 800/8*30/10, 10%
+WARMUP_STEPS= 10000 # For cosine scheduler
 MAX_EPOCHS= 30
 MAX_STEPS= -1
 

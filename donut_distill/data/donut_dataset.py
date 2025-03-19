@@ -18,6 +18,10 @@ class DonutDataset(Dataset):
     Each row consists of an image path (png/jpg/jpeg) and ground truth (JSON/JSONL/TXT).
     It is converted into pixel_values (vectorized image) and labels (tokenized input_ids).
 
+    Modified  from original:
+     - https://github.com/clovaai/donut/blob/4cfcf972560e1a0f26eb3e294c8fc88a0d336626/donut/util.py#L31
+     - https://github.com/NielsRogge/Transformers-Tutorials/blob/master/Donut/DocVQA/Fine_tune_Donut_on_DocVQA.ipynb
+
     Args:
         processor (DonutProcessor): Processor to handle images and tokenization.
         model (VisionEncoderDecoderModel): Model whose tokenizer may be extended.

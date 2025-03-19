@@ -14,9 +14,7 @@ def load_config(path: str):
         yaml.YAMLError: If there is an error parsing the YAML file.
     """
     with open(path, "r") as config_file:
-        config_data: Dict[str, Any] = yaml.safe_load(
-            config_file
-        )  # Load YAML file into a dictionary
+        config_data: Dict[str, Any] = yaml.safe_load(config_file)
 
     # Update CONFIG attributes if they exist, using uppercase keys
     for key, value in config_data.items():

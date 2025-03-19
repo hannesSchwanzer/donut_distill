@@ -139,10 +139,8 @@ def preprocess_directory_funsd(
     Returns:
         None
     """
-    # Create output directory if it does not exist
     Path(output_path).mkdir(parents=True, exist_ok=True)
 
-    # Open metadata file for writing
     metadata_file = open(path.join(output_path, "metadata.jsonl"), "w")
 
     # Define paths for images and annotations
@@ -159,7 +157,7 @@ def preprocess_directory_funsd(
     # Iterate through files, processing annotations and copying images
     for i, file_id in enumerate(file_ids):
         if max_datapoints and i >= max_datapoints:
-            break  # Stop processing if the maximum number of datapoints is reached
+            break
 
         image_path = path.join(image_directory, f"{file_id}.png")
         annotation_path = path.join(annotation_directory, f"{file_id}.json")
@@ -233,14 +231,11 @@ def preprocess_docvqa(
         elif dataset_split == "val" and validation_limit is not None:
             data = data[:validation_limit]
 
-        # Create output directory for the dataset split
         output_directory = path.join(output_path, dataset_split)
         Path(output_directory).mkdir(parents=True, exist_ok=True)
 
-        # Open metadata file for writing
         metadata_file = open(path.join(output_directory, "metadata.jsonl"), "w")
 
-        # Process each data point
         for datapoint in tqdm(data, desc=f"Processing {dataset_split} set"):
             image_path = path.join(images_path, datapoint["image"])
             image_name = path.basename(image_path)
@@ -262,7 +257,6 @@ def preprocess_docvqa(
             # Copy the corresponding image to the output directory
             shutil.copy(image_path, output_directory)
 
-        # Close the metadata file after processing all samples
         metadata_file.close()
 
 
