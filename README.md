@@ -1,5 +1,4 @@
-# Donut on FUNSD
-Finetuning the Donut model on the FUNSD dataset
+# Distill Donut
 
 ## Installation
 1. Clone repository
