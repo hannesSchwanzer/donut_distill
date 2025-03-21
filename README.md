@@ -6,29 +6,31 @@ Finetuning the Donut model on the FUNSD dataset
 ```
 git clone https://github.com/hannesSchwanzer/donut_funsd.git
 ```
-2. Get the dataset funsd
-```
-curl -O https://guillaumejaume.github.io/FUNSD/dataset.zip
-unzip dataset.zip
-rm dataset.zip
-```
-3. Install python
-4. Install [pytorch](https://pytorch.org/get-started/locally/) (you might need to install cuda first, if you want to use gpu)
-5. Install project with requirements
+2. Install python
+3. Install [pytorch](https://pytorch.org/get-started/locally/) (you might need to install cuda first, if you want to use gpu)
+4. Install project with requirements
 ```
 pip install .
 ```
+
+## Download DocVQA
+1. Download task 1 from https://rrc.cvc.uab.es/?ch=17&com=downloads (Login is needed; only need to download annotations and images)
+2. Create directory docvqa/ at project root with subdirectories documents/ and queries/
+3. Extract images in documents/ and annotation files in queries/
 
 ## Usage
 1. Preprocess the dataset
 ``` 
 python donut_distill/data/preprocess_donut.py
 ```
-2. Finetune / Distill the model. Use --config to overwrite default config.
+2. Finetune / Distill the model. Use --config to overwrite default config. Default configs given in directory configs/. Most parameters describted in donut_distill/config/config.py
 ```
 python donut_distill/training/train.py --config <path_to_config>
 ```
-Example configs in configs/
+3. Evaluate:
+```
+python donut_distill/evaluation/evaluate.py --config <path_to_config>
+```
 
 
 ## Directories and files

@@ -13,6 +13,12 @@ from transformers import GenerationConfig
 from donut_distill.data.postprocess_donut import postprocess_donut_docvqa, postprocess_donut_funsd
 import numpy as np
 
+from donut_distill.config.loader import load_config
+import argparse
+
+from donut_distill.models.helpers import prepare_model_and_processor
+from donut_distill.training.utils import prepare_dataloader
+
 
 def evaluate_docvqa(
     model: VisionEncoderDecoderModel,
@@ -268,8 +274,8 @@ def evaluate_generation_configs_docvqa(
 
     return results
 
-
-if __name__ == "__main__":
+# Old function, not used anymore
+def experiment_different_generation_configs():
     generation_configs = [
         ("Top k - 50", GenerationConfig(do_sample=True, top_k=50)),
         ("Top k - 35", GenerationConfig(do_sample=True, top_k=35)),
@@ -392,4 +398,36 @@ if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model.to(device)
 
-    evaluate_generation_configs_funsd(model, processor, device, generation_configs)
+    # evaluate_generation_configs_funsd(model, processor, device, generation_configs)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", help="Input the path to the config file with the settings you want to train with", type=str, default=None)
+    args = parser.parse_args()
+
+    if args.config:
+        load_config(args.config)
+
+
+    model, processor= prepare_model_and_processor(
+        special_tokens=["<yes/>", "<no/>"], return_config=False, load_teacher=CONFIG.DISTILL
+    )
+
+    _, val_dataloader = prepare_dataloader(model, processor)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+    model.eval()
+    with torch.autocast(device_type="cuda"):
+        eval_results = evaluate_docvqa(
+            model=model,
+            processor=processor,
+            device=device,
+            val_dataloader=val_dataloader,
+            generation_config=GenerationConfig(
+                early_stopping=True,
+                num_beams=1,
+            ),
+        )
+    print("\n")
+    print("Evaluation results:", eval_results)

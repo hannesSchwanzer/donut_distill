@@ -1,0 +1,58 @@
+### General ###
+distill: True
+result_path: "./result/docvqa"
+verbose: True
+log_interval: 10 # After how many steps the logger should log
+wandb_name: "Distill"
+
+### transformer parameters ###
+max_length: 128
+input_size: [1280, 960] # when the input resolution differs from the pre-training setting, some weights will be newly initialized (but the model training would be okay)
+
+### Dataset parameters ###
+dataset: "./preprocessed_dataset_docvqa/" # TODO: Change if nessecary
+dataset_name_training: "train"
+dataset_name_validate: "validation"
+sort_json_key: False
+align_long_axis: False
+
+### Train parameters ###
+train_batch_sizes: 2
+accumulation_steps: 2
+lr: !!float 3e-6
+gradient_clip_val: 0.25
+
+num_nodes: 1
+num_workers: 5
+
+warmup_steps: 10000 # 800/8*30/10, 10%
+max_epochs: 30
+max_steps: -1
+
+### Validation parameters ###
+val_batch_sizes: 1
+val_check_interval: 0.2
+limit_val_batches: 1
+
+### Distillation parameters ###
+teacher_model_path: 'path/to/model' # TODO: Change
+decoder_layer_map: [0, 1, 2, 3]
+encoder_layer_map: [[0,1], [0,1], [0,1,2,3,4,5,6,7,8,9,10,11,12,13], [0,1]]
+alpha: 1
+beta: 1
+gamma: 1
+delta: 1
+encoder_weight: 1
+decoder_weight: 1
+
+## Encoder balanced parameters
+# alpha: !!float 1.49295628e-02 # Weight for self-attention loss.
+# beta: !!float 5.27460570e-06 # Weight for hidden states loss.
+# gamma: !!float 2.65489091e-07 # Weight for logit-based loss.
+# delta: !!float 9.85064897e-01 # Weight for cross-attention loss.
+
+## Decoder balanced parameters
+# alpha: !!float 0.014648893874952319 # Weight for self-attention loss.
+# beta: !!float 6.21888683150273e-06 # Weight for hidden states loss.
+# gamma: !!float 2.0911198202581705e-07 # Weight for logit-based loss.
+# delta: !!float 0.9853446781262342 # Weight for cross-attention loss.

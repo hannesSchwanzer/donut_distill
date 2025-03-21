@@ -1,0 +1,18 @@
+verbose: True
+model_id: 'path/to/model' # TODO: Change to path before evaluating
+
+### Dataset parameters ###
+dataset: "./preprocessed_dataset_docvqa/" # TODO: Change if nessecary
+dataset_name_training: "train"
+dataset_name_validate: "validation"
+sort_json_key: False
+align_long_axis: False
+
+# Will change model structure. Not recommended for validation
+max_length: 128
+input_size: [1280, 960]
+
+### Validation parameters ###
+val_batch_sizes: 1 # Leave at 1
+limit_val_batches: 1 # Limit how much of validation data should be used (in percentage. 1 = 100%)
+
