@@ -8,6 +8,7 @@ from transformers import (
 )
 from torch.nn.utils.rnn import pad_sequence
 import donut_distill.config.config as CONFIG
+from donut_distill.data.donut_dataset import DonutDataset
 from donut_distill.evaluation.metrics import calculate_metrics_docvqa, calculate_metrics_funsd
 from transformers import GenerationConfig
 from donut_distill.data.postprocess_donut import postprocess_donut_docvqa, postprocess_donut_funsd
@@ -414,7 +415,23 @@ if __name__ == "__main__":
         special_tokens=["<yes/>", "<no/>"], return_config=False, load_teacher=CONFIG.DISTILL
     )
 
-    _, val_dataloader = prepare_dataloader(model, processor)
+    val_dataset = DonutDataset(
+        dataset_name_or_path=CONFIG.DATASET,
+        processor=processor,
+        model=model,
+        max_length=CONFIG.MAX_LENGTH,
+        split=CONFIG.DATASET_NAME_VALIDATE,
+        task_start_token="<s_docvqa>",
+        prompt_end_token="<s_answer>",
+        sort_json_key=CONFIG.SORT_JSON_KEY,
+        task="docvqa",
+    )
+    val_dataloader = DataLoader(
+        val_dataset,
+        batch_size=CONFIG.VAL_BATCH_SIZES,
+        shuffle=True,
+        num_workers=CONFIG.NUM_WORKERS,
+    )
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
     model.eval()
